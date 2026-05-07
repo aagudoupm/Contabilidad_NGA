@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinDoc - Gestión de Facturas</title>
+    
+    <!-- Google Fonts - Inter (usado por Uber, LinkedIn, etc) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #FFFFFF;
+            color: #1a1a1a;
+        }
+        
+        /* Colores de marca */
+        :root {
+            --primary: #2563eb;
+            --primary-light: #dbeafe;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-900: #111827;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #1d4ed8;
+        }
+        
+        .input-field {
+            border: 1px solid var(--gray-300);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .input-field:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+        
+        .card {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .badge-factura {
+            background-color: #dcfce7;
+            color: #15803d;
+        }
+        
+        .badge-ticket {
+            background-color: #fef3c7;
+            color: #b45309;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+        const { Upload, Camera, FileText, Plus, Trash2, Download, Eye, EyeOff, X, Loader, CheckCircle2, AlertCircle, FileQuestion, Image as ImageIcon, File } = lucide;
+
+        function FinanceApp() {
+            const [transactions, setTransactions] = useState([]);
+            const [mainView, setMainView] = useState('ingresos');
+            const [subView, setSubView] = useState('registro');
+            const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+            const [apiKey, setApiKey] = useState(() => localStorage.getItem('anthropic_api_key') || '');
+            const [showApiKeyInput, setShowApiKeyInput] = useState(!apiKey);
+            const [processing, setProcessing] = useState(false);
+            const [previewModal, setPreviewModal] = useState(null);
+            
+            const [manualForm, setManualForm] = useState({
+                type: 'ingreso',
+                categoria: mainView === 'ingresos' ? 'servicios-odontologicos' : '188',
+                numero_factura: '',
+                fecha: new Date().toISOString().split('T')[0],
+                cantidad: '',
+                cliente_proveedor: '',
+                nif_cif: '',
+                descripcion: ''
+            });
+
+            const fileInputRef = useRef(null);
+
+            // Categorías
+            const categorias = {
+                ingresos: {
+                    'servicios-odontologicos': 'Servicios odontológicos',
+                    'protesis': 'Prótesis dental',
+                    'ortodoncia': 'Ortodoncia',
+                    'implantes': 'Implantes',
+                    'otros-ingresos': 'Otros ingresos'
+                },
+                gastos: {
+                    '186': '186. Compras de existencias',
+                    '187': '187. Variación de existencias',
+                    '188': '188. Otros consumos de explotación',
+                    '189': '189. Sueldos y salarios',
+                    '190': '190. Seguridad Social a cargo de la empresa',
+                    '191': '191. Otros gastos de personal',
+                    '192': '192. Arrendamientos y cánones',
+                    '193': '193. Reparaciones y conservación',
+                    '194': '194. Servicios de profesionales independientes',
+                    '195': '195. Otros servicios exteriores',
+                    '196': '196. Tributos fiscalmente deducibles',
+                    '197': '197. IVA soportado no deducible',
+                    '198': '198. Gastos financieros',
+                    '199': '199. Amortizaciones',
+                    '200': '200. Pérdidas por deterioro y otras provisiones',
+                    '201': '201. Incentivos al mecenazgo',
+                    '217': '217. Otros gastos fiscalmente deducibles',
+                    '218': '218. Suma de gastos deducibles',
+                    '222': '222. Provisiones y gastos de difícil justificación'
+                }
+            };
+
+            useEffect(() => {
+                localStorage.setItem('anthropic_api_key', apiKey);
+            }, [apiKey]);
+
+            useEffect(() => {
+                const saved = localStorage.getItem('transactions_all');
+                if (saved) {
+                    setTransactions(JSON.parse(saved));
+                }
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('transactions_all', JSON.stringify(transactions));
+            }, [transactions]);
+
+            // Detectar si es factura o ticket
+            const detectarTipoDocumento = (filename, descripcion = '') => {
+                const esFactura = /factur/i.test(filename) || /factur/i.test(descripcion);
+                const esTicket = /ticket/i.test(filename) || /recib/i.test(filename);
+                return esFactura ? 'factura' : esTicket ? 'ticket' : 'desconocido';
+            };
+
+            // Procesar imagen/PDF con OCR
+            const processDocument = async (file, isIngreso = false) => {
+                if (!apiKey) {
+                    alert('Por favor configura tu API key de Anthropic primero');
+                    setShowApiKeyInput(true);
+                    return null;
+                }
+
+                try {
+                    let base64Data;
+                    let mediaType;
+
+                    if (file.type === 'application/pdf') {
+                        // Para PDFs, intentamos leer como imagen
+                        alert('Los PDFs se procesarán como documentos. Extrayendo texto...');
+                        const reader = new FileReader();
+                        base64Data = await new Promise((resolve, reject) => {
+                            reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(file);
+                        });
+                        mediaType = 'application/pdf';
+                    } else {
+                        const reader = new FileReader();
+                        base64Data = await new Promise((resolve, reject) => {
+                            reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(file);
+                        });
+                        mediaType = file.type;
+                    }
+
+                    // Guardar la imagen/PDF en base64 en localStorage
+                    const documentId = `doc_${Date.now()}`;
+                    const documentData = {
+                        id: documentId,
+                        data: base64Data,
+                        type: file.type,
+                        name: file.name,
+                        timestamp: new Date().toISOString()
+                    };
+                    localStorage.setItem(documentId, JSON.stringify(documentData));
+
+                    const prompt = isIngreso 
+                        ? `Extrae la información de esta factura de ingresos. Responde SOLO con JSON válido:
+{
+  "fecha": "YYYY-MM-DD",
+  "numero_factura": "string",
+  "cliente": "string (nombre del cliente)",
+  "nif_cif": "string (NIF/CIF del cliente o null)",
+  "descripcion": "string (descripción del servicio)",
+  "cantidad": number
+}`
+                        : `Extrae la información de esta factura de gastos. Responde SOLO con JSON válido:
+{
+  "fecha": "YYYY-MM-DD",
+  "numero_factura": "string",
+  "proveedor": "string (nombre de la empresa)",
+  "nif_cif": "string (NIF/CIF o null)",
+  "descripcion": "string (qué se compró)",
+  "cantidad": number
+}`;
+
+                    const response = await fetch('https://api.anthropic.com/v1/messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': apiKey,
+                            'anthropic-version': '2023-06-01'
+                        },
+                        body: JSON.stringify({
+                            model: 'claude-3-5-sonnet-20241022',
+                            max_tokens: 500,
+                            messages: [
+                                {
+                                    role: 'user',
+                                    content: [
+                                        {
+                                            type: 'image',
+                                            source: {
+                                                type: 'base64',
+                                                media_type: mediaType === 'application/pdf' ? 'image/jpeg' : mediaType,
+                                                data: base64Data
+                                            }
+                                        },
+                                        {
+                                            type: 'text',
+                                            text: prompt
+                                        }
+                                    ]
+                                }
+                            ]
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error?.message || 'Error en la API');
+                    }
+
+                    const data = await response.json();
+                    const textContent = data.content[0].text;
+                    const jsonText = textContent.replace(/```json\n?|\n?```/g, '').trim();
+                    const extracted = JSON.parse(jsonText);
+
+                    const tipoDocumento = detectarTipoDocumento(file.name, extracted.descripcion || '');
+
+                    return {
+                        id: Date.now(),
+                        type: isIngreso ? 'ingreso' : 'gasto',
+                        categoria: isIngreso ? 'servicios-odontologicos' : '217',
+                        numero_factura: extracted.numero_factura || '',
+                        fecha: extracted.fecha || new Date().toISOString().split('T')[0],
+                        cliente_proveedor: extracted.cliente || extracted.proveedor || '',
+                        nif_cif: extracted.nif_cif || '',
+                        descripcion: extracted.descripcion || '',
+                        cantidad: extracted.cantidad || 0,
+                        origen: 'ocr',
+                        documento_id: documentId,
+                        tipo_documento: tipoDocumento,
+                        nombre_archivo: file.name
+                    };
+                } catch (error) {
+                    console.error('Error procesando documento:', error);
+                    alert('Error al procesar documento: ' + error.message);
+                    return null;
+                }
+            };
+
+            const handleFileUpload = async (files, isIngreso = false) => {
+                if (!apiKey) {
+                    setShowApiKeyInput(true);
+                    return;
+                }
+
+                const fileArray = Array.from(files);
+                setProcessing(true);
+
+                for (const file of fileArray) {
+                    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') continue;
+                    const result = await processDocument(file, isIngreso);
+                    if (result) {
+                        setTransactions(prev => [result, ...prev]);
+                    }
+                }
+
+                setProcessing(false);
+            };
+
+            const handleAddManual = () => {
+                if (!manualForm.cantidad || !manualForm.cliente_proveedor) {
+                    alert('Por favor completa categoría, cantidad y cliente/proveedor');
+                    return;
+                }
+
+                const newTransaction = {
+                    id: Date.now(),
+                    type: manualForm.type,
+                    categoria: manualForm.categoria,
+                    numero_factura: manualForm.numero_factura,
+                    fecha: manualForm.fecha,
+                    cliente_proveedor: manualForm.cliente_proveedor,
+                    nif_cif: manualForm.nif_cif,
+                    descripcion: manualForm.descripcion,
+                    cantidad: parseFloat(manualForm.cantidad),
+                    origen: 'manual',
+                    documento_id: null,
+                    tipo_documento: 'factura'
+                };
+
+                setTransactions(prev => [newTransaction, ...prev]);
+                setManualForm({
+                    type: manualForm.type,
+                    categoria: manualForm.type === 'ingreso' ? 'servicios-odontologicos' : '188',
+                    numero_factura: '',
+                    fecha: new Date().toISOString().split('T')[0],
+                    cantidad: '',
+                    cliente_proveedor: '',
+                    nif_cif: '',
+                    descripcion: ''
+                });
+            };
+
+            const handleDelete = (id) => {
+                const trans = transactions.find(t => t.id === id);
+                if (trans?.documento_id) {
+                    localStorage.removeItem(trans.documento_id);
+                }
+                setTransactions(prev => prev.filter(t => t.id !== id));
+            };
+
+            const monthTransactions = transactions.filter(t => {
+                const tipoMatch = mainView === 'ingresos' ? t.type === 'ingreso' : t.type === 'gasto';
+                const monthMatch = t.fecha.startsWith(selectedMonth);
+                return tipoMatch && monthMatch;
+            });
+
+            const total = monthTransactions.reduce((sum, t) => sum + t.cantidad, 0);
+
+            const handleExportCSV = () => {
+                const headers = ['Fecha', 'Nº Factura', 'Cliente/Proveedor', 'NIF/CIF', 'Descripción', 'Categoría', 'Importe', 'Origen', 'Tipo Documento'];
+                const rows = monthTransactions.map(t => [
+                    t.fecha,
+                    t.numero_factura,
+                    t.cliente_proveedor,
+                    t.nif_cif,
+                    t.descripcion,
+                    mainView === 'ingresos' ? categorias.ingresos[t.categoria] : categorias.gastos[t.categoria],
+                    t.cantidad,
+                    t.origen === 'ocr' ? 'Escaneado' : 'Manual',
+                    t.tipo_documento === 'factura' ? 'Factura' : t.tipo_documento === 'ticket' ? 'Ticket' : 'Desconocido'
+                ].map(v => `"${v}"`));
+                
+                const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `${mainView}-${selectedMonth}.csv`;
+                link.click();
+            };
+
+            const allMonths = [...new Set(transactions.map(t => t.fecha.substring(0, 7)))].sort().reverse();
+
+            return (
+                <div className="min-h-screen bg-white">
+                    {/* Modal API Key */}
+                    {showApiKeyInput && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                            <div className="card max-w-md w-full p-8">
+                                <h2 className="text-2xl font-bold mb-2 text-gray-900">Configuración requerida</h2>
+                                <p className="text-gray-600 mb-6">Para usar OCR de facturas, necesitas una API key.</p>
+                                
+                                <div className="space-y-4">
+                                    <input
+                                        type="password"
+                                        value={apiKey}
+                                        onChange={(e) => setApiKey(e.target.value)}
+                                        placeholder="sk-ant-..."
+                                        className="w-full input-field"
+                                    />
+                                    <p className="text-xs text-gray-500">
+                                        Obtén gratis en <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 font-medium">console.anthropic.com</a>
+                                    </p>
+                                    <button
+                                        onClick={() => {
+                                            if (apiKey.length > 0) setShowApiKeyInput(false);
+                                        }}
+                                        className="w-full btn-primary font-bold py-3 rounded-lg transition"
+                                    >
+                                        Guardar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal Preview */}
+                    {previewModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+                            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-96 overflow-y-auto">
+                                <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                                    <h3 className="text-lg font-bold text-gray-900">{previewModal.nombre_archivo}</h3>
+                                    <button onClick={() => setPreviewModal(null)} className="text-gray-400 hover:text-gray-600">
+                                        <X className="w-6 h-6" />
+                                    </button>
+                                </div>
+                                <div className="p-6">
+                                    {previewModal.tipo_archivo === 'image' && (
+                                        <img src={previewModal.data} alt="Preview" className="max-w-full h-auto rounded-lg" />
+                                    )}
+                                    {previewModal.tipo_archivo === 'pdf' && (
+                                        <div className="text-center py-12">
+                                            <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                                            <p className="text-gray-500">PDF - No se puede previsualizar aquí</p>
+                                            <p className="text-sm text-gray-400 mt-2">Descargar archivo para ver</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Header */}
+                    <header className="bg-white border-b border-gray-200">
+                        <div className="max-w-7xl mx-auto px-6 py-6">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                                            <FileText className="w-6 h-6 text-white" />
+                                        </div>
+                                        <h1 className="text-3xl font-bold text-gray-900">FinDoc</h1>
+                                    </div>
+                                    <p className="text-gray-600">Gestión inteligente de facturas e ingresos</p>
+                                </div>
+                                {apiKey && (
+                                    <button
+                                        onClick={() => setShowApiKeyInput(true)}
+                                        className="text-sm text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg border border-gray-200 hover:border-gray-300"
+                                    >
+                                        Cambiar API Key
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Tabs principales */}
+                            <div className="flex gap-1 border-b border-gray-200">
+                                {[
+                                    { id: 'ingresos', label: '📊 Ingresos', icon: '💰' },
+                                    { id: 'gastos', label: '📋 Gastos', icon: '💸' }
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => {
+                                            setMainView(tab.id);
+                                            setSubView('registro');
+                                        }}
+                                        className={`px-6 py-4 font-medium text-sm transition-colors border-b-2 ${
+                                            mainView === tab.id
+                                                ? 'text-blue-600 border-blue-600'
+                                                : 'text-gray-600 border-transparent hover:text-gray-900'
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Sub-tabs */}
+                    <div className="bg-gray-50 border-b border-gray-200">
+                        <div className="max-w-7xl mx-auto px-6">
+                            <div className="flex gap-1">
+                                {[
+                                    { id: 'registro', label: 'Registrar', icon: Upload },
+                                    { id: 'resumen', label: 'Resumen', icon: BarChart3 },
+                                    { id: 'detalles', label: 'Detalles', icon: FileText }
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setSubView(tab.id)}
+                                        className={`px-6 py-3 font-medium text-sm transition-colors ${
+                                            subView === tab.id
+                                                ? 'text-blue-600 border-b-2 border-blue-600'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Contenido principal */}
+                    <main className="max-w-7xl mx-auto px-6 py-8">
+                        {subView === 'registro' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                {/* Panel OCR */}
+                                <div className="space-y-4">
+                                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                        <Camera className="w-6 h-6 text-blue-600" />
+                                        Escanear factura
+                                    </h2>
+
+                                    <div
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            handleFileUpload(e.dataTransfer.files, mainView === 'ingresos');
+                                        }}
+                                        onDragOver={(e) => e.preventDefault()}
+                                        className="card p-8 text-center border-2 border-dashed border-gray-300 hover:border-blue-600 transition"
+                                    >
+                                        <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                                        <h3 className="font-semibold text-gray-900 mb-2">Arrastra o carga tu factura</h3>
+                                        <p className="text-sm text-gray-600 mb-4">
+                                            JPG, PNG, PDF • Hasta 10MB
+                                        </p>
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            multiple
+                                            accept="image/*,.pdf"
+                                            onChange={(e) => handleFileUpload(e.target.files, mainView === 'ingresos')}
+                                            className="hidden"
+                                        />
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="btn-primary font-semibold py-2 px-6 rounded-lg transition"
+                                        >
+                                            Seleccionar archivo
+                                        </button>
+                                    </div>
+
+                                    {processing && (
+                                        <div className="card p-4 flex items-center gap-3 bg-blue-50 border-blue-200">
+                                            <Loader className="w-5 h-5 text-blue-600 animate-spin" />
+                                            <p className="text-blue-700">Procesando factura...</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Panel Manual */}
+                                <div className="space-y-4">
+                                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                        <FileText className="w-6 h-6 text-blue-600" />
+                                        Registro manual
+                                    </h2>
+
+                                    <div className="card p-6 space-y-4">
+                                        {/* CATEGORÍA (PRIMERO) */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Categoría *</label>
+                                            <select
+                                                value={manualForm.categoria}
+                                                onChange={(e) => setManualForm({...manualForm, categoria: e.target.value})}
+                                                className="w-full input-field"
+                                            >
+                                                {Object.entries(mainView === 'ingresos' ? categorias.ingresos : categorias.gastos).map(([key, label]) => (
+                                                    <option key={key} value={key}>{label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* NÚMERO DE FACTURA */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Número de factura</label>
+                                            <input
+                                                type="text"
+                                                value={manualForm.numero_factura}
+                                                onChange={(e) => setManualForm({...manualForm, numero_factura: e.target.value})}
+                                                placeholder="Ej: FAC-2024-001"
+                                                className="w-full input-field"
+                                            />
+                                        </div>
+
+                                        {/* FECHA */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Fecha *</label>
+                                            <input
+                                                type="date"
+                                                value={manualForm.fecha}
+                                                onChange={(e) => setManualForm({...manualForm, fecha: e.target.value})}
+                                                className="w-full input-field"
+                                            />
+                                        </div>
+
+                                        {/* IMPORTE */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Importe (€) *</label>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                value={manualForm.cantidad}
+                                                onChange={(e) => setManualForm({...manualForm, cantidad: e.target.value})}
+                                                placeholder="0.00"
+                                                className="w-full input-field"
+                                            />
+                                        </div>
+
+                                        {/* CLIENTE/PROVEEDOR */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-900 mb-2">
+                                                {mainView === 'ingresos' ? 'Cliente' : 'Proveedor'} *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={manualForm.cliente_proveedor}
+                                                onChange={(e) => setManualForm({...manualForm, cliente_proveedor: e.target.value})}
+                                                placeholder="Nombre de la empresa"
+                                                className="w-full input-field"
+                                            />
+                                        </div>
+
+                                        {/* NIF */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-900 mb-2">NIF/CIF</label>
+                                            <input
+                                                type="text"
+                                                value={manualForm.nif_cif}
+                                                onChange={(e) => setManualForm({...manualForm, nif_cif: e.target.value})}
+                                                placeholder="Ej: 12345678A"
+                                                className="w-full input-field"
+                                            />
+                                        </div>
+
+                                        {/* DESCRIPCIÓN */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Descripción</label>
+                                            <textarea
+                                                value={manualForm.descripcion}
+                                                onChange={(e) => setManualForm({...manualForm, descripcion: e.target.value})}
+                                                placeholder="Descripción del concepto (opcional)"
+                                                rows="3"
+                                                className="w-full input-field resize-none"
+                                            />
+                                        </div>
+
+                                        <button
+                                            onClick={handleAddManual}
+                                            className="w-full btn-primary font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2 mt-6"
+                                        >
+                                            <Plus className="w-5 h-5" />
+                                            Guardar {mainView === 'ingresos' ? 'ingreso' : 'gasto'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {subView === 'resumen' && (
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-900 mb-3">Período:</label>
+                                    <select
+                                        value={selectedMonth}
+                                        onChange={(e) => setSelectedMonth(e.target.value)}
+                                        className="px-4 py-3 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:border-blue-600"
+                                    >
+                                        {allMonths.map(month => (
+                                            <option key={month} value={month}>
+                                                {new Date(month + '-01').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="card p-8 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                                    <p className="text-sm font-medium text-blue-600 mb-2">Total {mainView}</p>
+                                    <p className="text-4xl font-bold text-gray-900 mb-1">{total.toFixed(2)} €</p>
+                                    <p className="text-sm text-gray-600">{monthTransactions.length} {monthTransactions.length === 1 ? 'transacción' : 'transacciones'}</p>
+                                </div>
+
+                                <button
+                                    onClick={handleExportCSV}
+                                    className="w-full btn-primary font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2"
+                                >
+                                    <Download className="w-5 h-5" />
+                                    Descargar Excel
+                                </button>
+                            </div>
+                        )}
+
+                        {subView === 'detalles' && (
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-900 mb-3">Período:</label>
+                                    <select
+                                        value={selectedMonth}
+                                        onChange={(e) => setSelectedMonth(e.target.value)}
+                                        className="px-4 py-3 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:border-blue-600"
+                                    >
+                                        {allMonths.map(month => (
+                                            <option key={month} value={month}>
+                                                {new Date(month + '-01').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {monthTransactions.length === 0 ? (
+                                    <div className="card p-12 text-center">
+                                        <FileQuestion className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                                        <p className="text-gray-500">No hay transacciones para este período</p>
+                                    </div>
+                                ) : (
+                                    <div className="card overflow-hidden">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full">
+                                                <thead>
+                                                    <tr className="bg-gray-50 border-b border-gray-200">
+                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700">Fecha</th>
+                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700">Nº Factura</th>
+                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700">Cliente/Proveedor</th>
+                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700">Descripción</th>
+                                                        <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700">Importe</th>
+                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-700">Tipo de Documento</th>
+                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-700">Acciones</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200">
+                                                    {monthTransactions
+                                                        .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+                                                        .map(t => (
+                                                            <tr key={t.id} className="hover:bg-gray-50 transition">
+                                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                                    {new Date(t.fecha).toLocaleDateString('es-ES')}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                                                                    {t.numero_factura || '—'}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                                    {t.cliente_proveedor}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-sm text-gray-600">
+                                                                    {t.descripcion || '—'}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-sm text-right font-semibold text-gray-900">
+                                                                    {t.cantidad.toFixed(2)} €
+                                                                </td>
+                                                                <td className="px-6 py-4 text-center">
+                                                                    {!t.documento_id ? (
+                                                                        <div className="flex items-center justify-center gap-2">
+                                                                            <span className="text-xs text-gray-500">Sin documento</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="flex flex-col items-center gap-1">
+                                                                            {t.tipo_documento === 'factura' ? (
+                                                                                <span className="badge badge-factura">
+                                                                                    ✓ Factura válida
+                                                                                </span>
+                                                                            ) : t.tipo_documento === 'ticket' ? (
+                                                                                <span className="badge badge-ticket">
+                                                                                    ⚠ Ticket (solicitar factura)
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="badge" style={{backgroundColor: '#e5e7eb', color: '#4b5563'}}>
+                                                                                    ? Tipo desconocido
+                                                                                </span>
+                                                                            )}
+                                                                            <span className="text-xs text-gray-500">
+                                                                                {t.origen === 'ocr' ? '📷' : '✏️'} {t.origen}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-center">
+                                                                    <div className="flex items-center justify-center gap-2">
+                                                                        {t.documento_id && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    const docData = JSON.parse(localStorage.getItem(t.documento_id));
+                                                                                    const isImage = docData.type.startsWith('image');
+                                                                                    setPreviewModal({
+                                                                                        data: docData.data,
+                                                                                        nombre_archivo: docData.name,
+                                                                                        tipo_archivo: isImage ? 'image' : 'pdf'
+                                                                                    });
+                                                                                }}
+                                                                                className="text-blue-600 hover:text-blue-700 p-2"
+                                                                                title="Ver documento"
+                                                                            >
+                                                                                <Eye className="w-4 h-4" />
+                                                                            </button>
+                                                                        )}
+                                                                        <button
+                                                                            onClick={() => handleDelete(t.id)}
+                                                                            className="text-red-600 hover:text-red-700 p-2"
+                                                                            title="Eliminar"
+                                                                        >
+                                                                            <Trash2 className="w-4 h-4" />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        }
+
+        const { BarChart3 } = lucide;
+        ReactDOM.render(<FinanceApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
