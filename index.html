@@ -235,22 +235,23 @@
                     };
                     localStorage.setItem(documentId, JSON.stringify(documentData));
 
-                    // Usar Free OCR API (ocr.space - sin límites)
-                    const response = await fetch('https://api.ocr.space/parse/image', {
+                    // Usar OCR.space con proxy CORS
+                    const response = await fetch('https://cors-anywhere.herokuapp.com/https://api.ocr.space/parse/image', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
                             base64Image: `data:${file.type};base64,${base64Data}`,
-                            apikey: 'K87899142372222'
+                            apikey: 'K87899142372222',
+                            isOverlayRequired: false
                         })
                     });
 
                     const data = await response.json();
                     
                     if (data.IsErroredOnProcessing) {
-                        throw new Error('No se pudo procesar la imagen: ' + (data.ErrorMessage || 'Error desconocido'));
+                        throw new Error('No se pudo procesar: ' + (data.ErrorMessage || 'Error desconocido'));
                     }
 
                     if (data.ParsedText && data.ParsedText.trim()) {
@@ -265,7 +266,7 @@
                             datos: extracted
                         };
                     } else {
-                        throw new Error('No se pudo extraer texto de la imagen');
+                        throw new Error('No se pudo extraer texto');
                     }
 
                     this.processing = false;
