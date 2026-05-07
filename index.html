@@ -196,6 +196,7 @@
                 this.selectedMonth = new Date().toISOString().slice(0, 7);
                 this.processing = false;
                 this.pendingOcrData = null;
+                this.manualFormData = null;
                 
                 this.categorias = {
                     ingresos: {
@@ -373,6 +374,25 @@
                 if (this.pendingOcrData?.documentId) {
                     localStorage.removeItem(this.pendingOcrData.documentId);
                 }
+                this.pendingOcrData = null;
+                this.render();
+            }
+            
+            autoFillForm() {
+                if (!this.pendingOcrData) return;
+                
+                const datos = this.pendingOcrData.datos;
+                this.manualFormData = {
+                    type: 'ingreso',
+                    categoria: 'servicios-odontologicos',
+                    numero_factura: datos.numero_factura || '',
+                    fecha: datos.fecha || new Date().toISOString().split('T')[0],
+                    cantidad: datos.cantidad?.toString() || '',
+                    cliente_proveedor: datos.cliente_proveedor || '',
+                    nif_cif: datos.nif_cif || '',
+                    descripcion: datos.descripcion || ''
+                };
+                
                 this.pendingOcrData = null;
                 this.render();
             }
@@ -560,11 +580,13 @@
                         
                         <p style="font-weight: bold; margin-bottom: 12px;">¿Es un ingreso o un gasto?</p>
                         
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                             <button onclick="window.app.confirmOcrData('ingreso')" style="flex: 1; padding: 12px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 500; cursor: pointer;">✓ Es un INGRESO</button>
                             <button onclick="window.app.confirmOcrData('gasto')" style="flex: 1; padding: 12px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 500; cursor: pointer;">✓ Es un GASTO</button>
                         </div>
-                        <button onclick="window.app.cancelOcrData()" style="width: 100%; padding: 12px; background: #d1d5db; color: #1a1a1a; border: none; border-radius: 8px; font-weight: 500; cursor: pointer; margin-top: 8px;">✕ Cancelar</button>
+                        
+                        <button onclick="window.app.autoFillForm()" style="width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 500; cursor: pointer; margin-bottom: 8px;">📝 Cargar en formulario</button>
+                        <button onclick="window.app.cancelOcrData()" style="width: 100%; padding: 12px; background: #d1d5db; color: #1a1a1a; border: none; border-radius: 8px; font-weight: 500; cursor: pointer;">✕ Cancelar</button>
                     </div>
                 `;
             }
@@ -572,13 +594,6 @@
             renderRegistrar() {
                 return `
                     <div>
-                        <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 16px;">Selecciona el tipo de movimiento</h2>
-                        
-                        <div style="display: flex; gap: 8px; margin-bottom: 24px;">
-                            <button onclick="window.app.typeFilter='ingresos'; window.app.render()" style="flex: 1; padding: 12px; background: ${this.typeFilter === 'ingresos' ? '#10b981' : '#f3f4f6'}; color: ${this.typeFilter === 'ingresos' ? 'white' : '#1a1a1a'}; border: none; border-radius: 8px; font-weight: 500; cursor: pointer;">📊 INGRESO</button>
-                            <button onclick="window.app.typeFilter='gastos'; window.app.render()" style="flex: 1; padding: 12px; background: ${this.typeFilter === 'gastos' ? '#ef4444' : '#f3f4f6'}; color: ${this.typeFilter === 'gastos' ? 'white' : '#1a1a1a'}; border: none; border-radius: 8px; font-weight: 500; cursor: pointer;">💸 GASTO</button>
-                        </div>
-                        
                         <div class="card" style="padding: 16px; margin-bottom: 16px;">
                             <h3 style="font-weight: bold; margin-bottom: 12px;">📷 Capturar desde cámara</h3>
                             <input type="file" id="cameraInput" accept="image/*" capture="environment" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; margin-bottom: 8px;">
@@ -600,54 +615,64 @@
             }
             
             renderManualForm() {
+                const formData = this.manualFormData || {
+                    type: 'ingreso',
+                    categoria: 'servicios-odontologicos',
+                    numero_factura: '',
+                    fecha: new Date().toISOString().split('T')[0],
+                    cantidad: '',
+                    cliente_proveedor: '',
+                    nif_cif: '',
+                    descripcion: ''
+                };
+                
+                const categorias = formData.type === 'ingreso' ? this.categorias.ingresos : this.categorias.gastos;
+                
                 return `
                     <div class="card" style="padding: 16px;">
                         <div style="margin-bottom: 16px;">
                             <label style="display: block; font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">¿Es ingreso o gasto? *</label>
-                            <select id="manualType" class="input-field">
-                                <option value="ingreso">INGRESO</option>
-                                <option value="gasto">GASTO</option>
+                            <select id="manualType" class="input-field" onchange="window.app.manualFormData = window.app.manualFormData || {}; window.app.manualFormData.type = this.value; window.app.manualFormData.categoria = this.value === 'ingreso' ? 'servicios-odontologicos' : '217'; window.app.render();">
+                                <option value="ingreso" ${formData.type === 'ingreso' ? 'selected' : ''}>INGRESO</option>
+                                <option value="gasto" ${formData.type === 'gasto' ? 'selected' : ''}>GASTO</option>
                             </select>
                         </div>
                         
                         <div style="margin-bottom: 16px;">
                             <label style="display: block; font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">Categoría *</label>
                             <select id="manualCategoria" class="input-field">
-                                ${this.typeFilter === 'ingresos' 
-                                    ? Object.entries(this.categorias.ingresos).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')
-                                    : Object.entries(this.categorias.gastos).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')
-                                }
+                                ${Object.entries(categorias).map(([k,v]) => `<option value="${k}" ${formData.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}
                             </select>
                         </div>
                         
                         <div style="margin-bottom: 16px;">
                             <label style="display: block; font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">Número de factura</label>
-                            <input type="text" id="manualNumeroFactura" class="input-field" placeholder="FAC-2024-001">
+                            <input type="text" id="manualNumeroFactura" class="input-field" placeholder="FAC-2024-001" value="${formData.numero_factura}">
                         </div>
                         
                         <div style="margin-bottom: 16px;">
                             <label style="display: block; font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">Fecha *</label>
-                            <input type="date" id="manualFecha" class="input-field" value="${new Date().toISOString().split('T')[0]}">
+                            <input type="date" id="manualFecha" class="input-field" value="${formData.fecha}">
                         </div>
                         
                         <div style="margin-bottom: 16px;">
                             <label style="display: block; font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">Importe (€) *</label>
-                            <input type="number" id="manualCantidad" step="0.01" class="input-field" placeholder="0.00">
+                            <input type="number" id="manualCantidad" step="0.01" class="input-field" placeholder="0.00" value="${formData.cantidad}">
                         </div>
                         
                         <div style="margin-bottom: 16px;">
                             <label style="display: block; font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">Cliente/Proveedor *</label>
-                            <input type="text" id="manualCliente" class="input-field" placeholder="Nombre">
+                            <input type="text" id="manualCliente" class="input-field" placeholder="Nombre" value="${formData.cliente_proveedor}">
                         </div>
                         
                         <div style="margin-bottom: 16px;">
                             <label style="display: block; font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">NIF/CIF</label>
-                            <input type="text" id="manualNif" class="input-field" placeholder="12345678A">
+                            <input type="text" id="manualNif" class="input-field" placeholder="12345678A" value="${formData.nif_cif}">
                         </div>
                         
                         <div style="margin-bottom: 16px;">
                             <label style="display: block; font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">Descripción</label>
-                            <textarea id="manualDescripcion" class="input-field" rows="3" style="resize: none; padding: 10px;"></textarea>
+                            <textarea id="manualDescripcion" class="input-field" rows="3" style="resize: none; padding: 10px;">${formData.descripcion}</textarea>
                         </div>
                         
                         <button onclick="window.app.addManualTransaction()" class="btn-primary" style="margin-top: 16px;">✓ Guardar movimiento</button>
@@ -668,6 +693,7 @@
                     descripcion: document.getElementById('manualDescripcion').value
                 };
                 this.handleAddManual(formData);
+                this.manualFormData = null;
             }
             
             renderResumen() {
