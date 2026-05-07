@@ -236,45 +236,97 @@
                     };
                     localStorage.setItem(documentId, JSON.stringify(documentData));
 
-                    // Esperar a que Tesseract.js esté cargado
-                    while (!window.Tesseract) {
-                        await new Promise(r => setTimeout(r, 100));
+                    // OCR.space API con formato correcto
+                    const requestBody = new FormData();
+                    const blob = new Blob([Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))], { type: file.type });
+                    requestBody.append('filename', file.name);
+                    requestBody.append('filetype', file.type);
+                    requestBody.append('apikey', 'K87899142372222');
+                    requestBody.append('file', blob);
+
+                    const response = await fetch('https://api.ocr.space/parse/image', {
+                        method: 'POST',
+                        body: requestBody
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.IsErroredOnProcessing) {
+                        throw new Error(data.ErrorMessage || 'Error en OCR');
                     }
 
-                    const { recognize } = window.Tesseract;
-                    const result = await recognize(
-                        `data:${file.type};base64,${base64Data}`,
-                        'spa'
-                    );
+                    if (data.ParsedText && data.ParsedText.trim()) {
+                        const extracted = this.extractDataFromText(data.ParsedText);
+                        const tipoDocumento = this.detectarTipoDocumento(file.name);
 
-                    const fullText = result.data.text;
-                    
-                    if (!fullText || fullText.trim().length === 0) {
-                        throw new Error('No se pudo extraer texto de la imagen');
+                        this.pendingOcrData = {
+                            documentId,
+                            tipoDocumento,
+                            nombreArchivo: file.name,
+                            datos: extracted
+                        };
+
+                        this.processing = false;
+                        this.render();
+                        
+                        setTimeout(() => window.scrollTo(0, 0), 100);
+                    } else {
+                        throw new Error('No se pudo extraer texto');
                     }
-
-                    const extracted = this.extractDataFromText(fullText);
-                    const tipoDocumento = this.detectarTipoDocumento(file.name);
-
-                    this.pendingOcrData = {
-                        documentId,
-                        tipoDocumento,
-                        nombreArchivo: file.name,
-                        datos: extracted
-                    };
-
-                    this.processing = false;
-                    this.render();
-                    
-                    setTimeout(() => {
-                        window.scrollTo(0, 0);
-                    }, 100);
                     
                 } catch (error) {
                     this.processing = false;
                     alert('Error: ' + error.message);
                     this.render();
                 }
+            }
+            
+            extractDataFromText(text) {
+                const lines = text.split('\n');
+                
+                const fechaMatch = text.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/);
+                let fecha = new Date().toISOString().split('T')[0];
+                if (fechaMatch) {
+                    const parts = fechaMatch[0].split(/[\/\-]/);
+                    if (parts[0].length === 4) {
+                        fecha = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+                    } else {
+                        fecha = `20${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                    }
+                }
+                
+                const importeMatch = text.match(/(\d+[.,]\d{2})\s*€?/);
+                let cantidad = 0;
+                if (importeMatch) {
+                    cantidad = parseFloat(importeMatch[1].replace(',', '.'));
+                }
+                
+                const facturaMatch = text.match(/(?:factura|invoice|fact|nº|no)[.\s:]*(\S+)/i);
+                let numero_factura = facturaMatch ? facturaMatch[1] : '';
+                
+                let descripcion = '';
+                let cliente_proveedor = '';
+                
+                for (let i = 0; i < Math.min(10, lines.length); i++) {
+                    const line = lines[i].trim();
+                    if (line.length > 5 && line.length < 100) {
+                        if (!cliente_proveedor && line.length > 10) {
+                            cliente_proveedor = line;
+                        } else if (!descripcion && line.length > 5 && line !== cliente_proveedor) {
+                            descripcion = line;
+                            break;
+                        }
+                    }
+                }
+                
+                return {
+                    fecha,
+                    numero_factura,
+                    cliente_proveedor: cliente_proveedor || 'Cliente/Proveedor',
+                    nif_cif: '',
+                    descripcion: descripcion || 'Concepto',
+                    cantidad: cantidad || 0
+                };
             }
             }
             
@@ -482,6 +534,41 @@
                 `;
                 
                 this.attachEventListeners();
+            }
+            
+            renderOcrConfirmation() {
+                const datos = this.pendingOcrData.datos;
+                return `
+                    <div style="background: #eff6ff; border: 2px solid #2563eb; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+                        <h2 style="font-weight: bold; margin-bottom: 16px; color: #1e40af;">✅ Datos extraídos</h2>
+                        
+                        <div style="background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; border: 1px solid #bfdbfe;">
+                            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e7ff;">
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">FECHA</label>
+                                <p style="font-weight: 500; font-size: 15px;">${datos.fecha}</p>
+                            </div>
+                            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e7ff;">
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">NÚMERO DE FACTURA</label>
+                                <p style="font-weight: 500; font-size: 15px;">${datos.numero_factura || '(No identificado)'}</p>
+                            </div>
+                            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e7ff;">
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">CLIENTE/PROVEEDOR</label>
+                                <p style="font-weight: 500; font-size: 15px;">${datos.cliente_proveedor}</p>
+                            </div>
+                            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e7ff;">
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">DESCRIPCIÓN</label>
+                                <p style="font-weight: 500; font-size: 15px;">${datos.descripcion}</p>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">IMPORTE</label>
+                                <p style="font-weight: bold; font-size: 20px; color: #2563eb;">${datos.cantidad.toFixed(2)} €</p>
+                            </div>
+                        </div>
+                        
+                        <button onclick="window.app.autoFillForm()" style="width: 100%; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-bottom: 8px; font-size: 14px;">📝 Cargar en formulario</button>
+                        <button onclick="window.app.cancelOcrData()" style="width: 100%; padding: 14px; background: #d1d5db; color: #1a1a1a; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px;">✕ Cancelar</button>
+                    </div>
+                `;
             }
             
             attachEventListeners() {
