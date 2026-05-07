@@ -324,11 +324,17 @@
                         documentId,
                         tipoDocumento,
                         nombreArchivo: file.name,
-                        datos: extracted
+                        datos: extracted,
+                        showForm: false
                     };
 
                     this.processing = false;
                     this.render();
+                    
+                    // Auto-scroll al panel de confirmación
+                    setTimeout(() => {
+                        window.scrollTo(0, 0);
+                    }, 100);
                     
                 } catch (error) {
                     alert('Error: ' + error.message);
@@ -553,40 +559,40 @@
                 const datos = this.pendingOcrData.datos;
                 return `
                     <div style="background: #eff6ff; border: 2px solid #2563eb; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
-                        <h2 style="font-weight: bold; margin-bottom: 12px;">Confirma los datos extraídos</h2>
+                        <h2 style="font-weight: bold; margin-bottom: 16px; color: #1e40af;">✅ Datos extraídos de la foto</h2>
                         
-                        <div style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                            <div style="margin-bottom: 8px;">
-                                <label style="display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px;">Fecha:</label>
-                                <p style="font-weight: 500;">${datos.fecha}</p>
+                        <div style="background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; border: 1px solid #bfdbfe;">
+                            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e7ff;">
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">FECHA</label>
+                                <p style="font-weight: 500; font-size: 15px;">${datos.fecha}</p>
                             </div>
-                            <div style="margin-bottom: 8px;">
-                                <label style="display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px;">Número de factura:</label>
-                                <p style="font-weight: 500;">${datos.numero_factura || 'N/A'}</p>
+                            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e7ff;">
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">NÚMERO DE FACTURA</label>
+                                <p style="font-weight: 500; font-size: 15px;">${datos.numero_factura || '(No identificado)'}</p>
                             </div>
-                            <div style="margin-bottom: 8px;">
-                                <label style="display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px;">Cliente/Proveedor:</label>
-                                <p style="font-weight: 500;">${datos.cliente_proveedor}</p>
+                            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e7ff;">
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">CLIENTE/PROVEEDOR</label>
+                                <p style="font-weight: 500; font-size: 15px;">${datos.cliente_proveedor}</p>
                             </div>
-                            <div style="margin-bottom: 8px;">
-                                <label style="display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px;">Descripción:</label>
-                                <p style="font-weight: 500;">${datos.descripcion}</p>
+                            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e7ff;">
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">DESCRIPCIÓN</label>
+                                <p style="font-weight: 500; font-size: 15px;">${datos.descripcion || '(No especificada)'}</p>
                             </div>
                             <div>
-                                <label style="display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px;">Importe:</label>
-                                <p style="font-weight: bold; font-size: 18px; color: #2563eb;">${datos.cantidad.toFixed(2)} €</p>
+                                <label style="display: block; font-size: 12px; color: #4b5563; font-weight: 600; margin-bottom: 4px;">IMPORTE</label>
+                                <p style="font-weight: bold; font-size: 20px; color: #2563eb;">${datos.cantidad.toFixed(2)} €</p>
                             </div>
                         </div>
                         
-                        <p style="font-weight: bold; margin-bottom: 12px;">¿Es un ingreso o un gasto?</p>
+                        <p style="font-weight: bold; margin-bottom: 12px; font-size: 15px;">¿Qué tipo de movimiento es?</p>
                         
-                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                            <button onclick="window.app.confirmOcrData('ingreso')" style="flex: 1; padding: 12px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 500; cursor: pointer;">✓ Es un INGRESO</button>
-                            <button onclick="window.app.confirmOcrData('gasto')" style="flex: 1; padding: 12px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 500; cursor: pointer;">✓ Es un GASTO</button>
+                        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                            <button onclick="window.app.confirmOcrData('ingreso')" style="flex: 1; padding: 12px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px;">✓ INGRESO</button>
+                            <button onclick="window.app.confirmOcrData('gasto')" style="flex: 1; padding: 12px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px;">✓ GASTO</button>
                         </div>
                         
-                        <button onclick="window.app.autoFillForm()" style="width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 500; cursor: pointer; margin-bottom: 8px;">📝 Cargar en formulario</button>
-                        <button onclick="window.app.cancelOcrData()" style="width: 100%; padding: 12px; background: #d1d5db; color: #1a1a1a; border: none; border-radius: 8px; font-weight: 500; cursor: pointer;">✕ Cancelar</button>
+                        <button onclick="window.app.autoFillForm()" style="width: 100%; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-bottom: 8px; font-size: 14px;">📝 Cargar en formulario para revisar</button>
+                        <button onclick="window.app.cancelOcrData()" style="width: 100%; padding: 14px; background: #d1d5db; color: #1a1a1a; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px;">✕ Cancelar</button>
                     </div>
                 `;
             }
@@ -822,6 +828,8 @@
                         if (e.target.files?.[0]) {
                             app.processDocument(e.target.files[0]);
                         }
+                        // Reset input para permitir subir la misma foto
+                        e.target.value = '';
                     });
                 }
                 
@@ -830,6 +838,8 @@
                         if (e.target.files?.[0]) {
                             app.processDocument(e.target.files[0]);
                         }
+                        // Reset input
+                        e.target.value = '';
                     });
                 }
             }, 100);
