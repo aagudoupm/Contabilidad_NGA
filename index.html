@@ -10,7 +10,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     
     <style>
         * {
@@ -64,21 +63,6 @@
         
         .btn-primary:hover {
             background-color: #1d4ed8;
-        }
-        
-        .btn-secondary {
-            background-color: var(--gray-200);
-            color: #1a1a1a;
-            padding: 10px 16px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-        
-        .btn-secondary:hover {
-            background-color: var(--gray-300);
         }
         
         .input-field {
@@ -146,24 +130,6 @@
             background-color: #f9fafb;
         }
         
-        .modal {
-            position: fixed;
-            inset: 0;
-            background-color: rgba(0,0,0,0.5);
-            display: flex;
-            align-items: flex-end;
-            z-index: 50;
-        }
-        
-        .modal-content {
-            background: white;
-            width: 100%;
-            max-height: 90vh;
-            border-radius: 16px 16px 0 0;
-            overflow-y: auto;
-            padding: 24px;
-        }
-        
         .tab-button {
             padding: 12px 16px;
             border: none;
@@ -191,9 +157,9 @@
         class ContabilidadApp {
             constructor() {
                 this.transactions = this.loadTransactions();
-                this.apiKey = localStorage.getItem('anthropic_api_key') || '';
-                this.mainView = 'registrar'; // 'registrar', 'resumen', 'detalles'
-                this.typeFilter = 'ingresos'; // 'ingresos', 'gastos', 'total'
+                this.anthropicKey = localStorage.getItem('anthropic_api_key') || '';
+                this.mainView = 'registrar';
+                this.typeFilter = 'ingresos';
                 this.selectedMonth = new Date().toISOString().slice(0, 7);
                 this.processing = false;
                 this.pendingOcrData = null;
@@ -253,6 +219,11 @@
             }
             
             async processDocument(file) {
+                if (!this.anthropicKey) {
+                    alert('Por favor configura tu API key de Anthropic primero');
+                    return;
+                }
+
                 try {
                     this.processing = true;
                     this.render();
@@ -269,15 +240,52 @@
                     };
                     localStorage.setItem(documentId, JSON.stringify(documentData));
 
-                    // Datos con valores por defecto para que el usuario los rellene
-                    const extracted = {
-                        fecha: new Date().toISOString().split('T')[0],
-                        numero_factura: '',
-                        cliente_proveedor: '',
-                        nif_cif: '',
-                        descripcion: '',
-                        cantidad: 0
-                    };
+                    const prompt = `Extrae la información de esta factura/ticket. Responde SOLO con JSON:
+{
+  "fecha": "YYYY-MM-DD",
+  "numero_factura": "string",
+  "cliente_proveedor": "string",
+  "nif_cif": "string o null",
+  "descripcion": "string",
+  "cantidad": number
+}`;
+
+                    const response = await fetch('https://api.anthropic.com/v1/messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': this.anthropicKey,
+                            'anthropic-version': '2023-06-01'
+                        },
+                        body: JSON.stringify({
+                            model: 'claude-3-5-sonnet-20241022',
+                            max_tokens: 500,
+                            messages: [{
+                                role: 'user',
+                                content: [{
+                                    type: 'image',
+                                    source: {
+                                        type: 'base64',
+                                        media_type: file.type === 'application/pdf' ? 'image/jpeg' : file.type,
+                                        data: base64Data
+                                    }
+                                }, {
+                                    type: 'text',
+                                    text: prompt
+                                }]
+                            }]
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error?.message || 'Error en API');
+                    }
+
+                    const data = await response.json();
+                    const textContent = data.content[0].text;
+                    const jsonText = textContent.replace(/```json\n?|\n?```/g, '').trim();
+                    const extracted = JSON.parse(jsonText);
 
                     const tipoDocumento = this.detectarTipoDocumento(file.name);
 
@@ -285,8 +293,7 @@
                         documentId,
                         tipoDocumento,
                         nombreArchivo: file.name,
-                        datos: extracted,
-                        showForm: false
+                        datos: extracted
                     };
 
                     this.processing = false;
@@ -297,62 +304,10 @@
                     }, 100);
                     
                 } catch (error) {
-                    alert('Error al procesar imagen: ' + error.message);
                     this.processing = false;
+                    alert('Error: ' + error.message);
                     this.render();
                 }
-            }
-            
-            extractDataFromText(text) {
-                // Patrones para extraer datos del texto
-                const lines = text.split('\n');
-                
-                // Buscar fecha (DD/MM/YYYY o YYYY-MM-DD)
-                const fechaMatch = text.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/);
-                let fecha = new Date().toISOString().split('T')[0];
-                if (fechaMatch) {
-                    const parts = fechaMatch[0].split(/[\/\-]/);
-                    if (parts[0].length === 4) {
-                        fecha = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
-                    } else {
-                        fecha = `20${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-                    }
-                }
-                
-                // Buscar importe (números con comas o puntos y €)
-                const importeMatch = text.match(/(\d+[.,]\d{2})\s*€/);
-                let cantidad = 0;
-                if (importeMatch) {
-                    cantidad = parseFloat(importeMatch[1].replace(',', '.'));
-                }
-                
-                // Buscar número de factura
-                const facturaMatch = text.match(/(?:factura|invoice|fact|nº|no)[.\s:]*(\w+[-]?\w+)/i);
-                let numero_factura = facturaMatch ? facturaMatch[1] : '';
-                
-                // Tomar primeras líneas significativas como descripción
-                let descripcion = '';
-                let cliente_proveedor = '';
-                
-                for (let i = 0; i < Math.min(5, lines.length); i++) {
-                    const line = lines[i].trim();
-                    if (line.length > 5 && line.length < 100 && !line.match(/^\d+/)) {
-                        if (!cliente_proveedor && line.length > 10) {
-                            cliente_proveedor = line;
-                        } else if (!descripcion && line.length > 5) {
-                            descripcion = line;
-                        }
-                    }
-                }
-                
-                return {
-                    fecha,
-                    numero_factura,
-                    cliente_proveedor: cliente_proveedor || 'Cliente/Proveedor',
-                    nif_cif: '',
-                    descripcion: descripcion || 'Servicio/Producto',
-                    cantidad
-                };
             }
             
             fileToBase64(file) {
@@ -364,41 +319,9 @@
                 });
             }
             
-            confirmOcrData(type) {
-                if (!this.pendingOcrData) return;
-
-                const datos = this.pendingOcrData.datos;
-                this.transactions.unshift({
-                    id: Date.now(),
-                    type: type === 'ingreso' ? 'ingreso' : 'gasto',
-                    categoria: type === 'ingreso' ? 'servicios-odontologicos' : '217',
-                    numero_factura: datos.numero_factura || '',
-                    fecha: datos.fecha || new Date().toISOString().split('T')[0],
-                    cliente_proveedor: datos.cliente_proveedor || '',
-                    nif_cif: datos.nif_cif || '',
-                    descripcion: datos.descripcion || '',
-                    cantidad: datos.cantidad || 0,
-                    origen: 'ocr',
-                    documento_id: this.pendingOcrData.documentId,
-                    tipo_documento: this.pendingOcrData.tipoDocumento
-                });
-
-                this.saveTransactions();
-                this.pendingOcrData = null;
-                this.render();
-            }
-            
-            cancelOcrData() {
-                if (this.pendingOcrData?.documentId) {
-                    localStorage.removeItem(this.pendingOcrData.documentId);
-                }
-                this.pendingOcrData = null;
-                this.render();
-            }
-            
             autoFillForm() {
                 if (!this.pendingOcrData) return;
-                
+
                 const datos = this.pendingOcrData.datos;
                 this.manualFormData = {
                     type: 'ingreso',
@@ -411,6 +334,14 @@
                     descripcion: datos.descripcion || ''
                 };
                 
+                this.pendingOcrData = null;
+                this.render();
+            }
+            
+            cancelOcrData() {
+                if (this.pendingOcrData?.documentId) {
+                    localStorage.removeItem(this.pendingOcrData.documentId);
+                }
                 this.pendingOcrData = null;
                 this.render();
             }
@@ -437,6 +368,7 @@
                 });
 
                 this.saveTransactions();
+                this.manualFormData = null;
                 this.render();
             }
             
@@ -492,48 +424,20 @@
                 const isImage = docData.type.startsWith('image');
                 
                 const modal = document.createElement('div');
-                modal.className = 'modal';
+                modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4';
                 modal.innerHTML = `
-                    <div class="modal-content" style="max-width: 500px; margin: auto; border-radius: 12px;">
+                    <div style="background: white; border-radius: 12px; max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 16px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                             <h3 style="font-weight: bold;">${docData.name}</h3>
-                            <button onclick="this.parentElement.parentElement.parentElement.remove()" style="cursor: pointer; border: none; background: none; font-size: 24px;">✕</button>
+                            <button onclick="this.closest('[style*=background]').parentElement.remove()" style="cursor: pointer; border: none; background: none; font-size: 24px; color: #6b7280;">✕</button>
                         </div>
-                        ${isImage ? `<img src="data:${docData.type};base64,${docData.data}" style="width: 100%; border-radius: 8px;">` : `<div style="text-align: center; padding: 40px;">PDF - Descarga para ver el contenido</div>`}
+                        ${isImage ? `<img src="data:${docData.type};base64,${docData.data}" style="width: 100%; border-radius: 8px;">` : `<div style="text-align: center; padding: 40px; color: #6b7280;">PDF - Descarga para ver contenido</div>`}
                     </div>
                 `;
                 document.body.appendChild(modal);
                 modal.addEventListener('click', (e) => {
                     if (e.target === modal) modal.remove();
                 });
-            }
-            
-            getHTMLHeader() {
-                return `
-                    <header style="background: white; border-bottom: 1px solid #e5e7eb; padding: 16px; position: sticky; top: 0; z-index: 10;">
-                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-                            <div style="width: 40px; height: 40px; background: #2563eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px;">C</div>
-                            <div>
-                                <h1 style="font-size: 24px; font-weight: bold; color: #1a1a1a;">Contabilidad-NGA</h1>
-                                <p style="color: #6b7280; font-size: 14px;">Gestión de facturas e ingresos</p>
-                            </div>
-                        </div>
-                        
-                        <div style="display: flex; gap: 8px; overflow-x: auto; border-bottom: 1px solid #e5e7eb; padding-bottom: 0;">
-                            <button class="tab-button ${this.mainView === 'registrar' ? 'active' : ''}" onclick="window.app.mainView='registrar'; window.app.render()" style="white-space: nowrap;">📝 Registrar</button>
-                            <button class="tab-button ${this.mainView === 'resumen' ? 'active' : ''}" onclick="window.app.mainView='resumen'; window.app.render()" style="white-space: nowrap;">📊 Resumen</button>
-                            <button class="tab-button ${this.mainView === 'detalles' ? 'active' : ''}" onclick="window.app.mainView='detalles'; window.app.render()" style="white-space: nowrap;">📋 Detalles</button>
-                        </div>
-                    </header>
-                `;
-            }
-            
-            setApiKey(key) {
-                if (key) {
-                    this.apiKey = key;
-                    localStorage.setItem('google_vision_key', key);
-                    this.render();
-                }
             }
             
             render() {
@@ -557,6 +461,69 @@
                         </main>
                     </div>
                 `;
+                
+                this.attachEventListeners();
+            }
+            
+            attachEventListeners() {
+                const cameraInput = document.getElementById('cameraInput');
+                const fileInput = document.getElementById('fileInput');
+                
+                if (cameraInput) {
+                    cameraInput.addEventListener('change', (e) => {
+                        if (e.target.files?.[0]) {
+                            this.processDocument(e.target.files[0]);
+                        }
+                        e.target.value = '';
+                    });
+                }
+                
+                if (fileInput) {
+                    fileInput.addEventListener('change', (e) => {
+                        if (e.target.files?.[0]) {
+                            this.processDocument(e.target.files[0]);
+                        }
+                        e.target.value = '';
+                    });
+                }
+            }
+            
+            getHTMLHeader() {
+                return `
+                    <header style="background: white; border-bottom: 1px solid #e5e7eb; padding: 16px; position: sticky; top: 0; z-index: 10;">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                            <div style="width: 40px; height: 40px; background: #2563eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px;">C</div>
+                            <div>
+                                <h1 style="font-size: 24px; font-weight: bold; color: #1a1a1a;">Contabilidad-NGA</h1>
+                                <p style="color: #6b7280; font-size: 14px;">Gestión de facturas e ingresos</p>
+                            </div>
+                        </div>
+                        
+                        <div style="background: ${this.anthropicKey ? '#dcfce7' : '#fef3c7'}; border: 1px solid ${this.anthropicKey ? '#86efac' : '#fde68a'}; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                            <p style="color: ${this.anthropicKey ? '#15803d' : '#92400e'}; font-size: 13px; margin-bottom: 8px; font-weight: 600;">
+                                ${this.anthropicKey ? '✅ API Key configurada' : '⚠️ Introduce tu API Key'}
+                            </p>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="password" id="apiKey" placeholder="sk-ant-..." value="${this.anthropicKey}" style="flex: 1; padding: 8px; border: 1px solid ${this.anthropicKey ? '#86efac' : '#fde68a'}; border-radius: 6px; font-size: 13px; font-family: monospace;">
+                                <button onclick="window.app.setApiKey(document.getElementById('apiKey').value)" style="padding: 8px 16px; background: ${this.anthropicKey ? '#10b981' : '#f59e0b'}; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;">Guardar</button>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 8px; overflow-x: auto; border-bottom: 1px solid #e5e7eb; padding-bottom: 0;">
+                            <button class="tab-button ${this.mainView === 'registrar' ? 'active' : ''}" onclick="window.app.mainView='registrar'; window.app.render()" style="white-space: nowrap;">📝 Registrar</button>
+                            <button class="tab-button ${this.mainView === 'resumen' ? 'active' : ''}" onclick="window.app.mainView='resumen'; window.app.render()" style="white-space: nowrap;">📊 Resumen</button>
+                            <button class="tab-button ${this.mainView === 'detalles' ? 'active' : ''}" onclick="window.app.mainView='detalles'; window.app.render()" style="white-space: nowrap;">📋 Detalles</button>
+                        </div>
+                    </header>
+                `;
+            }
+            
+            setApiKey(key) {
+                if (key) {
+                    this.anthropicKey = key;
+                    localStorage.setItem('anthropic_api_key', key);
+                    this.render();
+                }
             }
             
             renderOcrConfirmation() {
@@ -588,13 +555,6 @@
                             </div>
                         </div>
                         
-                        <p style="font-weight: bold; margin-bottom: 12px; font-size: 15px;">¿Qué tipo de movimiento es?</p>
-                        
-                        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                            <button onclick="window.app.confirmOcrData('ingreso')" style="flex: 1; padding: 12px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px;">✓ INGRESO</button>
-                            <button onclick="window.app.confirmOcrData('gasto')" style="flex: 1; padding: 12px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px;">✓ GASTO</button>
-                        </div>
-                        
                         <button onclick="window.app.autoFillForm()" style="width: 100%; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-bottom: 8px; font-size: 14px;">📝 Cargar en formulario para revisar</button>
                         <button onclick="window.app.cancelOcrData()" style="width: 100%; padding: 14px; background: #d1d5db; color: #1a1a1a; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px;">✕ Cancelar</button>
                     </div>
@@ -616,7 +576,7 @@
                             <p style="font-size: 12px; color: #6b7280;">JPG, PNG o PDF</p>
                         </div>
                         
-                        ${this.processing ? '<p style="color: #2563eb; text-align: center;">⏳ Procesando documento...</p>' : ''}
+                        ${this.processing ? '<p style="color: #2563eb; text-align: center; padding: 16px; background: #eff6ff; border-radius: 8px;">⏳ Procesando documento...</p>' : ''}
                         
                         <h3 style="font-weight: bold; margin: 24px 0 16px 0;">O registra manualmente</h3>
                         ${this.renderManualForm()}
@@ -703,7 +663,6 @@
                     descripcion: document.getElementById('manualDescripcion').value
                 };
                 this.handleAddManual(formData);
-                this.manualFormData = null;
             }
             
             renderResumen() {
@@ -750,7 +709,6 @@
             renderDetalles() {
                 const monthTransactions = this.getFilteredTransactions();
                 const allMonths = [...new Set(this.transactions.map(t => t.fecha.substring(0, 7)))].sort().reverse();
-                const categorias = this.categorias;
                 
                 return `
                     <div>
@@ -782,33 +740,24 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        ${monthTransactions.sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).map(t => {
-                                            const catName = t.type === 'ingreso' ? this.categorias.ingresos[t.categoria] : this.categorias.gastos[t.categoria];
-                                            return `
-                                                <tr style="border-bottom: 1px solid #e5e7eb;">
-                                                    <td style="padding: 12px; font-size: 13px;">${new Date(t.fecha).toLocaleDateString('es-ES')}</td>
-                                                    <td style="padding: 12px; font-size: 13px; font-weight: 500;">${t.numero_factura || '—'}</td>
-                                                    <td style="padding: 12px; font-size: 13px;">${t.cliente_proveedor}</td>
-                                                    <td style="padding: 12px; font-size: 13px; color: #6b7280;">${t.descripcion || '—'}</td>
-                                                    <td style="padding: 12px; font-size: 13px; font-weight: bold; text-align: right; color: ${t.type === 'ingreso' ? '#10b981' : '#ef4444'};">${t.type === 'ingreso' ? '+' : '-'}${t.cantidad.toFixed(2)} €</td>
-                                                    <td style="padding: 12px; font-size: 12px; text-align: center;">
-                                                        ${!t.documento_id ? '—' : `
-                                                            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-                                                                <span class="badge ${t.tipo_documento === 'factura' ? 'badge-factura' : 'badge-ticket'}" style="font-size: 11px;">
-                                                                    ${t.tipo_documento === 'factura' ? '✓ Fact' : '⚠ Tick'}
-                                                                </span>
-                                                            </div>
-                                                        `}
-                                                    </td>
-                                                    <td style="padding: 12px; text-align: center;">
-                                                        <div style="display: flex; gap: 6px; justify-content: center;">
-                                                            ${t.documento_id ? `<button onclick="window.app.showPreviewModal('${t.documento_id}')" style="color: #2563eb; cursor: pointer; border: none; background: none; padding: 4px; font-size: 16px;">👁️</button>` : ''}
-                                                            <button onclick="window.app.deleteTransaction(${t.id})" style="color: #ef4444; cursor: pointer; border: none; background: none; padding: 4px; font-size: 16px;">🗑️</button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            `;
-                                        }).join('')}
+                                        ${monthTransactions.sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).map(t => `
+                                            <tr style="border-bottom: 1px solid #e5e7eb;">
+                                                <td style="padding: 12px; font-size: 13px;">${new Date(t.fecha).toLocaleDateString('es-ES')}</td>
+                                                <td style="padding: 12px; font-size: 13px; font-weight: 500;">${t.numero_factura || '—'}</td>
+                                                <td style="padding: 12px; font-size: 13px;">${t.cliente_proveedor}</td>
+                                                <td style="padding: 12px; font-size: 13px; color: #6b7280;">${t.descripcion || '—'}</td>
+                                                <td style="padding: 12px; font-size: 13px; font-weight: bold; text-align: right; color: ${t.type === 'ingreso' ? '#10b981' : '#ef4444'};">${t.type === 'ingreso' ? '+' : '-'}${t.cantidad.toFixed(2)} €</td>
+                                                <td style="padding: 12px; font-size: 12px; text-align: center;">
+                                                    ${!t.documento_id ? '—' : `<span class="badge ${t.tipo_documento === 'factura' ? 'badge-factura' : 'badge-ticket'}">${t.tipo_documento === 'factura' ? '✓ Fact' : '⚠ Tick'}</span>`}
+                                                </td>
+                                                <td style="padding: 12px; text-align: center;">
+                                                    <div style="display: flex; gap: 6px; justify-content: center;">
+                                                        ${t.documento_id ? `<button onclick="window.app.showPreviewModal('${t.documento_id}')" style="color: #2563eb; cursor: pointer; border: none; background: none; padding: 4px; font-size: 16px;">👁️</button>` : ''}
+                                                        <button onclick="window.app.deleteTransaction(${t.id})" style="color: #ef4444; cursor: pointer; border: none; background: none; padding: 4px; font-size: 16px;">🗑️</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
                                     </tbody>
                                 </table>
                             `}
@@ -820,34 +769,7 @@
         
         // Iniciar app
         const app = new ContabilidadApp();
-        
-        // Event listeners para cámara y archivos
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-                const cameraInput = document.getElementById('cameraInput');
-                const fileInput = document.getElementById('fileInput');
-                
-                if (cameraInput) {
-                    cameraInput.addEventListener('change', (e) => {
-                        if (e.target.files?.[0]) {
-                            app.processDocument(e.target.files[0]);
-                        }
-                        // Reset input para permitir subir la misma foto
-                        e.target.value = '';
-                    });
-                }
-                
-                if (fileInput) {
-                    fileInput.addEventListener('change', (e) => {
-                        if (e.target.files?.[0]) {
-                            app.processDocument(e.target.files[0]);
-                        }
-                        // Reset input
-                        e.target.value = '';
-                    });
-                }
-            }, 100);
-        });
+        window.app = app;
     </script>
 </body>
 </html>
