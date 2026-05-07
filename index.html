@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/tesseract.js@v2/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     
     <style>
         * {
@@ -269,14 +269,16 @@
                     };
                     localStorage.setItem(documentId, JSON.stringify(documentData));
 
-                    // Usar Tesseract.js para OCR
-                    const result = await Tesseract.recognize(
-                        `data:${file.type};base64,${base64Data}`,
-                        'spa'
-                    );
+                    // Datos con valores por defecto para que el usuario los rellene
+                    const extracted = {
+                        fecha: new Date().toISOString().split('T')[0],
+                        numero_factura: '',
+                        cliente_proveedor: '',
+                        nif_cif: '',
+                        descripcion: '',
+                        cantidad: 0
+                    };
 
-                    const fullText = result.data.text;
-                    const extracted = this.extractDataFromText(fullText);
                     const tipoDocumento = this.detectarTipoDocumento(file.name);
 
                     this.pendingOcrData = {
