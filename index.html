@@ -5,16 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FinDoc - Gestión de Facturas</title>
     
-    <!-- Google Fonts - Inter (usado por Uber, LinkedIn, etc) -->
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
+    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/lucide@latest"></script>
     
     <style>
         * {
@@ -29,7 +26,6 @@
             color: #1a1a1a;
         }
         
-        /* Colores de marca */
         :root {
             --primary: #2563eb;
             --primary-light: #dbeafe;
@@ -40,16 +36,17 @@
             --gray-100: #f3f4f6;
             --gray-200: #e5e7eb;
             --gray-300: #d1d5db;
-            --gray-400: #9ca3af;
-            --gray-500: #6b7280;
-            --gray-600: #4b5563;
-            --gray-700: #374151;
-            --gray-900: #111827;
         }
         
         .btn-primary {
             background-color: var(--primary);
             color: white;
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
         }
         
         .btn-primary:hover {
@@ -61,7 +58,8 @@
             border-radius: 8px;
             padding: 10px 12px;
             font-size: 14px;
-            transition: all 0.2s;
+            width: 100%;
+            font-family: inherit;
         }
         
         .input-field:focus {
@@ -96,126 +94,112 @@
             background-color: #fef3c7;
             color: #b45309;
         }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background-color: #f9fafb;
+            border-bottom: 1px solid var(--gray-200);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        
+        tr:hover {
+            background-color: #f9fafb;
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useRef, useEffect } = React;
-        const { Upload, Camera, FileText, Plus, Trash2, Download, Eye, EyeOff, X, Loader, CheckCircle2, AlertCircle, FileQuestion, Image as ImageIcon, File } = lucide;
-
-        function FinanceApp() {
-            const [transactions, setTransactions] = useState([]);
-            const [mainView, setMainView] = useState('ingresos');
-            const [subView, setSubView] = useState('registro');
-            const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-            const [apiKey, setApiKey] = useState(() => localStorage.getItem('anthropic_api_key') || '');
-            const [showApiKeyInput, setShowApiKeyInput] = useState(!apiKey);
-            const [processing, setProcessing] = useState(false);
-            const [previewModal, setPreviewModal] = useState(null);
+    <script>
+        // App principal sin JSX - Vanilla JavaScript
+        class FinanceApp {
+            constructor() {
+                this.transactions = this.loadTransactions();
+                this.apiKey = localStorage.getItem('anthropic_api_key') || '';
+                this.mainView = 'ingresos';
+                this.subView = 'registro';
+                this.selectedMonth = new Date().toISOString().slice(0, 7);
+                this.processing = false;
+                
+                this.categorias = {
+                    ingresos: {
+                        'servicios-odontologicos': 'Servicios odontológicos',
+                        'protesis': 'Prótesis dental',
+                        'ortodoncia': 'Ortodoncia',
+                        'implantes': 'Implantes',
+                        'otros-ingresos': 'Otros ingresos'
+                    },
+                    gastos: {
+                        '186': '186. Compras de existencias',
+                        '187': '187. Variación de existencias',
+                        '188': '188. Otros consumos de explotación',
+                        '189': '189. Sueldos y salarios',
+                        '190': '190. Seguridad Social a cargo de la empresa',
+                        '191': '191. Otros gastos de personal',
+                        '192': '192. Arrendamientos y cánones',
+                        '193': '193. Reparaciones y conservación',
+                        '194': '194. Servicios de profesionales independientes',
+                        '195': '195. Otros servicios exteriores',
+                        '196': '196. Tributos fiscalmente deducibles',
+                        '197': '197. IVA soportado no deducible',
+                        '198': '198. Gastos financieros',
+                        '199': '199. Amortizaciones',
+                        '200': '200. Pérdidas por deterioro y otras provisiones',
+                        '201': '201. Incentivos al mecenazgo',
+                        '217': '217. Otros gastos fiscalmente deducibles',
+                        '218': '218. Suma de gastos deducibles',
+                        '222': '222. Provisiones y gastos de difícil justificación'
+                    }
+                };
+                
+                this.init();
+            }
             
-            const [manualForm, setManualForm] = useState({
-                type: 'ingreso',
-                categoria: mainView === 'ingresos' ? 'servicios-odontologicos' : '188',
-                numero_factura: '',
-                fecha: new Date().toISOString().split('T')[0],
-                cantidad: '',
-                cliente_proveedor: '',
-                nif_cif: '',
-                descripcion: ''
-            });
-
-            const fileInputRef = useRef(null);
-
-            // Categorías
-            const categorias = {
-                ingresos: {
-                    'servicios-odontologicos': 'Servicios odontológicos',
-                    'protesis': 'Prótesis dental',
-                    'ortodoncia': 'Ortodoncia',
-                    'implantes': 'Implantes',
-                    'otros-ingresos': 'Otros ingresos'
-                },
-                gastos: {
-                    '186': '186. Compras de existencias',
-                    '187': '187. Variación de existencias',
-                    '188': '188. Otros consumos de explotación',
-                    '189': '189. Sueldos y salarios',
-                    '190': '190. Seguridad Social a cargo de la empresa',
-                    '191': '191. Otros gastos de personal',
-                    '192': '192. Arrendamientos y cánones',
-                    '193': '193. Reparaciones y conservación',
-                    '194': '194. Servicios de profesionales independientes',
-                    '195': '195. Otros servicios exteriores',
-                    '196': '196. Tributos fiscalmente deducibles',
-                    '197': '197. IVA soportado no deducible',
-                    '198': '198. Gastos financieros',
-                    '199': '199. Amortizaciones',
-                    '200': '200. Pérdidas por deterioro y otras provisiones',
-                    '201': '201. Incentivos al mecenazgo',
-                    '217': '217. Otros gastos fiscalmente deducibles',
-                    '218': '218. Suma de gastos deducibles',
-                    '222': '222. Provisiones y gastos de difícil justificación'
-                }
-            };
-
-            useEffect(() => {
-                localStorage.setItem('anthropic_api_key', apiKey);
-            }, [apiKey]);
-
-            useEffect(() => {
+            init() {
+                this.render();
+                this.attachEventListeners();
+            }
+            
+            loadTransactions() {
                 const saved = localStorage.getItem('transactions_all');
-                if (saved) {
-                    setTransactions(JSON.parse(saved));
-                }
-            }, []);
-
-            useEffect(() => {
-                localStorage.setItem('transactions_all', JSON.stringify(transactions));
-            }, [transactions]);
-
-            // Detectar si es factura o ticket
-            const detectarTipoDocumento = (filename, descripcion = '') => {
-                const esFactura = /factur/i.test(filename) || /factur/i.test(descripcion);
-                const esTicket = /ticket/i.test(filename) || /recib/i.test(filename);
+                return saved ? JSON.parse(saved) : [];
+            }
+            
+            saveTransactions() {
+                localStorage.setItem('transactions_all', JSON.stringify(this.transactions));
+            }
+            
+            detectarTipoDocumento(filename) {
+                const esFactura = /factur/i.test(filename);
+                const esTicket = /ticket|recib/i.test(filename);
                 return esFactura ? 'factura' : esTicket ? 'ticket' : 'desconocido';
-            };
-
-            // Procesar imagen/PDF con OCR
-            const processDocument = async (file, isIngreso = false) => {
-                if (!apiKey) {
-                    alert('Por favor configura tu API key de Anthropic primero');
-                    setShowApiKeyInput(true);
+            }
+            
+            async processDocument(file, isIngreso) {
+                if (!this.apiKey) {
+                    alert('Por favor configura tu API key primero');
                     return null;
                 }
 
                 try {
-                    let base64Data;
-                    let mediaType;
+                    this.processing = true;
+                    this.render();
 
-                    if (file.type === 'application/pdf') {
-                        // Para PDFs, intentamos leer como imagen
-                        alert('Los PDFs se procesarán como documentos. Extrayendo texto...');
-                        const reader = new FileReader();
-                        base64Data = await new Promise((resolve, reject) => {
-                            reader.onload = (e) => resolve(e.target.result.split(',')[1]);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(file);
-                        });
-                        mediaType = 'application/pdf';
-                    } else {
-                        const reader = new FileReader();
-                        base64Data = await new Promise((resolve, reject) => {
-                            reader.onload = (e) => resolve(e.target.result.split(',')[1]);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(file);
-                        });
-                        mediaType = file.type;
-                    }
-
-                    // Guardar la imagen/PDF en base64 en localStorage
+                    const base64Data = await this.fileToBase64(file);
                     const documentId = `doc_${Date.now()}`;
+                    
                     const documentData = {
                         id: documentId,
                         data: base64Data,
@@ -226,22 +210,22 @@
                     localStorage.setItem(documentId, JSON.stringify(documentData));
 
                     const prompt = isIngreso 
-                        ? `Extrae la información de esta factura de ingresos. Responde SOLO con JSON válido:
+                        ? `Extrae la información de esta factura. Responde SOLO con JSON:
 {
   "fecha": "YYYY-MM-DD",
   "numero_factura": "string",
-  "cliente": "string (nombre del cliente)",
-  "nif_cif": "string (NIF/CIF del cliente o null)",
-  "descripcion": "string (descripción del servicio)",
+  "cliente": "string",
+  "nif_cif": "string o null",
+  "descripcion": "string",
   "cantidad": number
 }`
-                        : `Extrae la información de esta factura de gastos. Responde SOLO con JSON válido:
+                        : `Extrae la información de esta factura. Responde SOLO con JSON:
 {
   "fecha": "YYYY-MM-DD",
   "numero_factura": "string",
-  "proveedor": "string (nombre de la empresa)",
-  "nif_cif": "string (NIF/CIF o null)",
-  "descripcion": "string (qué se compró)",
+  "proveedor": "string",
+  "nif_cif": "string o null",
+  "descripcion": "string",
   "cantidad": number
 }`;
 
@@ -249,37 +233,31 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'x-api-key': apiKey,
+                            'x-api-key': this.apiKey,
                             'anthropic-version': '2023-06-01'
                         },
                         body: JSON.stringify({
                             model: 'claude-3-5-sonnet-20241022',
                             max_tokens: 500,
-                            messages: [
-                                {
-                                    role: 'user',
-                                    content: [
-                                        {
-                                            type: 'image',
-                                            source: {
-                                                type: 'base64',
-                                                media_type: mediaType === 'application/pdf' ? 'image/jpeg' : mediaType,
-                                                data: base64Data
-                                            }
-                                        },
-                                        {
-                                            type: 'text',
-                                            text: prompt
-                                        }
-                                    ]
-                                }
-                            ]
+                            messages: [{
+                                role: 'user',
+                                content: [{
+                                    type: 'image',
+                                    source: {
+                                        type: 'base64',
+                                        media_type: file.type === 'application/pdf' ? 'image/jpeg' : file.type,
+                                        data: base64Data
+                                    }
+                                }, {
+                                    type: 'text',
+                                    text: prompt
+                                }]
+                            }]
                         })
                     });
 
                     if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error?.message || 'Error en la API');
+                        throw new Error('Error en API');
                     }
 
                     const data = await response.json();
@@ -287,9 +265,9 @@
                     const jsonText = textContent.replace(/```json\n?|\n?```/g, '').trim();
                     const extracted = JSON.parse(jsonText);
 
-                    const tipoDocumento = detectarTipoDocumento(file.name, extracted.descripcion || '');
+                    const tipoDocumento = this.detectarTipoDocumento(file.name);
 
-                    return {
+                    const transaction = {
                         id: Date.now(),
                         type: isIngreso ? 'ingreso' : 'gasto',
                         categoria: isIngreso ? 'servicios-odontologicos' : '217',
@@ -304,84 +282,75 @@
                         tipo_documento: tipoDocumento,
                         nombre_archivo: file.name
                     };
+
+                    this.transactions.unshift(transaction);
+                    this.saveTransactions();
+                    this.processing = false;
+                    this.render();
+                    
                 } catch (error) {
-                    console.error('Error procesando documento:', error);
-                    alert('Error al procesar documento: ' + error.message);
-                    return null;
+                    alert('Error: ' + error.message);
+                    this.processing = false;
+                    this.render();
                 }
-            };
-
-            const handleFileUpload = async (files, isIngreso = false) => {
-                if (!apiKey) {
-                    setShowApiKeyInput(true);
+            }
+            
+            fileToBase64(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            }
+            
+            handleAddManual(formData) {
+                if (!formData.cantidad || !formData.cliente_proveedor) {
+                    alert('Completa categoría, cantidad y cliente/proveedor');
                     return;
                 }
 
-                const fileArray = Array.from(files);
-                setProcessing(true);
-
-                for (const file of fileArray) {
-                    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') continue;
-                    const result = await processDocument(file, isIngreso);
-                    if (result) {
-                        setTransactions(prev => [result, ...prev]);
-                    }
-                }
-
-                setProcessing(false);
-            };
-
-            const handleAddManual = () => {
-                if (!manualForm.cantidad || !manualForm.cliente_proveedor) {
-                    alert('Por favor completa categoría, cantidad y cliente/proveedor');
-                    return;
-                }
-
-                const newTransaction = {
+                this.transactions.unshift({
                     id: Date.now(),
-                    type: manualForm.type,
-                    categoria: manualForm.categoria,
-                    numero_factura: manualForm.numero_factura,
-                    fecha: manualForm.fecha,
-                    cliente_proveedor: manualForm.cliente_proveedor,
-                    nif_cif: manualForm.nif_cif,
-                    descripcion: manualForm.descripcion,
-                    cantidad: parseFloat(manualForm.cantidad),
+                    type: formData.type,
+                    categoria: formData.categoria,
+                    numero_factura: formData.numero_factura,
+                    fecha: formData.fecha,
+                    cliente_proveedor: formData.cliente_proveedor,
+                    nif_cif: formData.nif_cif,
+                    descripcion: formData.descripcion,
+                    cantidad: parseFloat(formData.cantidad),
                     origen: 'manual',
                     documento_id: null,
                     tipo_documento: 'factura'
-                };
-
-                setTransactions(prev => [newTransaction, ...prev]);
-                setManualForm({
-                    type: manualForm.type,
-                    categoria: manualForm.type === 'ingreso' ? 'servicios-odontologicos' : '188',
-                    numero_factura: '',
-                    fecha: new Date().toISOString().split('T')[0],
-                    cantidad: '',
-                    cliente_proveedor: '',
-                    nif_cif: '',
-                    descripcion: ''
                 });
-            };
 
-            const handleDelete = (id) => {
-                const trans = transactions.find(t => t.id === id);
+                this.saveTransactions();
+                this.render();
+            }
+            
+            deleteTransaction(id) {
+                const trans = this.transactions.find(t => t.id === id);
                 if (trans?.documento_id) {
                     localStorage.removeItem(trans.documento_id);
                 }
-                setTransactions(prev => prev.filter(t => t.id !== id));
-            };
-
-            const monthTransactions = transactions.filter(t => {
-                const tipoMatch = mainView === 'ingresos' ? t.type === 'ingreso' : t.type === 'gasto';
-                const monthMatch = t.fecha.startsWith(selectedMonth);
-                return tipoMatch && monthMatch;
-            });
-
-            const total = monthTransactions.reduce((sum, t) => sum + t.cantidad, 0);
-
-            const handleExportCSV = () => {
+                this.transactions = this.transactions.filter(t => t.id !== id);
+                this.saveTransactions();
+                this.render();
+            }
+            
+            getMonthTransactions() {
+                return this.transactions.filter(t => {
+                    const tipoMatch = this.mainView === 'ingresos' ? t.type === 'ingreso' : t.type === 'gasto';
+                    const monthMatch = t.fecha.startsWith(this.selectedMonth);
+                    return tipoMatch && monthMatch;
+                });
+            }
+            
+            exportCSV() {
+                const monthTransactions = this.getMonthTransactions();
+                const categorias = this.mainView === 'ingresos' ? this.categorias.ingresos : this.categorias.gastos;
+                
                 const headers = ['Fecha', 'Nº Factura', 'Cliente/Proveedor', 'NIF/CIF', 'Descripción', 'Categoría', 'Importe', 'Origen', 'Tipo Documento'];
                 const rows = monthTransactions.map(t => [
                     t.fecha,
@@ -389,7 +358,7 @@
                     t.cliente_proveedor,
                     t.nif_cif,
                     t.descripcion,
-                    mainView === 'ingresos' ? categorias.ingresos[t.categoria] : categorias.gastos[t.categoria],
+                    categorias[t.categoria],
                     t.cantidad,
                     t.origen === 'ocr' ? 'Escaneado' : 'Manual',
                     t.tipo_documento === 'factura' ? 'Factura' : t.tipo_documento === 'ticket' ? 'Ticket' : 'Desconocido'
@@ -399,460 +368,338 @@
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
-                link.download = `${mainView}-${selectedMonth}.csv`;
+                link.download = `${this.mainView}-${this.selectedMonth}.csv`;
                 link.click();
-            };
-
-            const allMonths = [...new Set(transactions.map(t => t.fecha.substring(0, 7)))].sort().reverse();
-
-            return (
-                <div className="min-h-screen bg-white">
-                    {/* Modal API Key */}
-                    {showApiKeyInput && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                            <div className="card max-w-md w-full p-8">
-                                <h2 className="text-2xl font-bold mb-2 text-gray-900">Configuración requerida</h2>
-                                <p className="text-gray-600 mb-6">Para usar OCR de facturas, necesitas una API key.</p>
-                                
-                                <div className="space-y-4">
-                                    <input
-                                        type="password"
-                                        value={apiKey}
-                                        onChange={(e) => setApiKey(e.target.value)}
-                                        placeholder="sk-ant-..."
-                                        className="w-full input-field"
-                                    />
-                                    <p className="text-xs text-gray-500">
-                                        Obtén gratis en <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 font-medium">console.anthropic.com</a>
-                                    </p>
-                                    <button
-                                        onClick={() => {
-                                            if (apiKey.length > 0) setShowApiKeyInput(false);
-                                        }}
-                                        className="w-full btn-primary font-bold py-3 rounded-lg transition"
-                                    >
-                                        Guardar
-                                    </button>
+            }
+            
+            render() {
+                const root = document.getElementById('root');
+                root.innerHTML = this.getHTML();
+                this.attachEventListeners();
+            }
+            
+            attachEventListeners() {
+                // API Key
+                const apiKeyInput = document.getElementById('apiKey');
+                if (apiKeyInput) {
+                    apiKeyInput.addEventListener('input', (e) => {
+                        this.apiKey = e.target.value;
+                        localStorage.setItem('anthropic_api_key', this.apiKey);
+                    });
+                }
+                
+                const saveApiBtn = document.getElementById('saveApiKey');
+                if (saveApiBtn) {
+                    saveApiBtn.addEventListener('click', () => {
+                        if (this.apiKey) {
+                            this.render();
+                        }
+                    });
+                }
+                
+                // Tabs principales
+                document.querySelectorAll('[data-main-view]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        this.mainView = e.target.dataset.mainView;
+                        this.subView = 'registro';
+                        this.render();
+                    });
+                });
+                
+                // Sub-tabs
+                document.querySelectorAll('[data-sub-view]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        this.subView = e.target.dataset.subView;
+                        this.render();
+                    });
+                });
+                
+                // Upload file
+                const fileInput = document.getElementById('fileInput');
+                if (fileInput) {
+                    fileInput.addEventListener('change', (e) => {
+                        const files = Array.from(e.target.files);
+                        files.forEach(file => {
+                            if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+                                this.processDocument(file, this.mainView === 'ingresos');
+                            }
+                        });
+                    });
+                }
+                
+                // Drop zone
+                const dropZone = document.getElementById('dropZone');
+                if (dropZone) {
+                    dropZone.addEventListener('dragover', (e) => e.preventDefault());
+                    dropZone.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        const files = Array.from(e.dataTransfer.files);
+                        files.forEach(file => {
+                            if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+                                this.processDocument(file, this.mainView === 'ingresos');
+                            }
+                        });
+                    });
+                }
+                
+                // Manual form
+                const addManualBtn = document.getElementById('addManual');
+                if (addManualBtn) {
+                    addManualBtn.addEventListener('click', () => {
+                        const formData = {
+                            type: this.mainView === 'ingresos' ? 'ingreso' : 'gasto',
+                            categoria: document.getElementById('categoria').value,
+                            numero_factura: document.getElementById('numero_factura').value,
+                            fecha: document.getElementById('fecha').value,
+                            cantidad: document.getElementById('cantidad').value,
+                            cliente_proveedor: document.getElementById('cliente_proveedor').value,
+                            nif_cif: document.getElementById('nif_cif').value,
+                            descripcion: document.getElementById('descripcion').value
+                        };
+                        this.handleAddManual(formData);
+                    });
+                }
+                
+                // Delete buttons
+                document.querySelectorAll('[data-delete]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const id = parseInt(e.target.dataset.delete);
+                        this.deleteTransaction(id);
+                    });
+                });
+                
+                // Export
+                const exportBtn = document.getElementById('exportBtn');
+                if (exportBtn) {
+                    exportBtn.addEventListener('click', () => this.exportCSV());
+                }
+                
+                // Month selector
+                const monthSelect = document.getElementById('monthSelect');
+                if (monthSelect) {
+                    monthSelect.addEventListener('change', (e) => {
+                        this.selectedMonth = e.target.value;
+                        this.render();
+                    });
+                }
+                
+                // View document
+                document.querySelectorAll('[data-view-doc]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const docId = e.target.dataset.viewDoc;
+                        const docData = JSON.parse(localStorage.getItem(docId));
+                        const isImage = docData.type.startsWith('image');
+                        
+                        const modal = document.createElement('div');
+                        modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4';
+                        modal.innerHTML = `
+                            <div class="bg-white rounded-lg max-w-2xl w-full max-h-96 overflow-y-auto">
+                                <div class="flex items-center justify-between p-6 border-b border-gray-200">
+                                    <h3 class="font-bold">${docData.name}</h3>
+                                    <button onclick="this.parentElement.parentElement.parentElement.remove()" class="text-gray-400 hover:text-gray-600">✕</button>
+                                </div>
+                                <div class="p-6">
+                                    ${isImage ? `<img src="data:${docData.type};base64,${docData.data}" class="max-w-full h-auto rounded-lg">` : `<div class="text-center py-12"><p class="text-gray-500">PDF - Ver archivo para previsualizar</p></div>`}
                                 </div>
                             </div>
-                        </div>
-                    )}
-
-                    {/* Modal Preview */}
-                    {previewModal && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-                            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-96 overflow-y-auto">
-                                <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                                    <h3 className="text-lg font-bold text-gray-900">{previewModal.nombre_archivo}</h3>
-                                    <button onClick={() => setPreviewModal(null)} className="text-gray-400 hover:text-gray-600">
-                                        <X className="w-6 h-6" />
-                                    </button>
-                                </div>
-                                <div className="p-6">
-                                    {previewModal.tipo_archivo === 'image' && (
-                                        <img src={previewModal.data} alt="Preview" className="max-w-full h-auto rounded-lg" />
-                                    )}
-                                    {previewModal.tipo_archivo === 'pdf' && (
-                                        <div className="text-center py-12">
-                                            <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                                            <p className="text-gray-500">PDF - No se puede previsualizar aquí</p>
-                                            <p className="text-sm text-gray-400 mt-2">Descargar archivo para ver</p>
-                                        </div>
-                                    )}
+                        `;
+                        document.body.appendChild(modal);
+                        modal.addEventListener('click', (e) => {
+                            if (e.target === modal) modal.remove();
+                        });
+                    });
+                });
+            }
+            
+            getHTML() {
+                const monthTransactions = this.getMonthTransactions();
+                const total = monthTransactions.reduce((sum, t) => sum + t.cantidad, 0);
+                const allMonths = [...new Set(this.transactions.map(t => t.fecha.substring(0, 7)))].sort().reverse();
+                const categorias = this.mainView === 'ingresos' ? this.categorias.ingresos : this.categorias.gastos;
+                
+                return `
+                    <div class="min-h-screen bg-white">
+                        ${!this.apiKey ? `
+                            <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                                <div class="card max-w-md w-full p-8">
+                                    <h2 class="text-2xl font-bold mb-2 text-gray-900">Configuración requerida</h2>
+                                    <p class="text-gray-600 mb-6">Necesitas una API key de Anthropic para usar OCR.</p>
+                                    <input type="password" id="apiKey" placeholder="sk-ant-..." class="input-field mb-4">
+                                    <p class="text-xs text-gray-500 mb-4">Obtén gratis en <a href="https://console.anthropic.com" target="_blank" class="text-blue-600">console.anthropic.com</a></p>
+                                    <button id="saveApiKey" class="btn-primary w-full">Guardar</button>
                                 </div>
                             </div>
-                        </div>
-                    )}
-
-                    {/* Header */}
-                    <header className="bg-white border-b border-gray-200">
-                        <div className="max-w-7xl mx-auto px-6 py-6">
-                            <div className="flex items-center justify-between mb-8">
-                                <div>
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                                            <FileText className="w-6 h-6 text-white" />
+                        ` : ''}
+                        
+                        <header class="bg-white border-b border-gray-200">
+                            <div class="max-w-7xl mx-auto px-6 py-6">
+                                <div class="flex items-center justify-between mb-8">
+                                    <div>
+                                        <div class="flex items-center gap-3 mb-2">
+                                            <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">F</div>
+                                            <h1 class="text-3xl font-bold text-gray-900">FinDoc</h1>
                                         </div>
-                                        <h1 className="text-3xl font-bold text-gray-900">FinDoc</h1>
+                                        <p class="text-gray-600">Gestión inteligente de facturas e ingresos</p>
                                     </div>
-                                    <p className="text-gray-600">Gestión inteligente de facturas e ingresos</p>
                                 </div>
-                                {apiKey && (
-                                    <button
-                                        onClick={() => setShowApiKeyInput(true)}
-                                        className="text-sm text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg border border-gray-200 hover:border-gray-300"
-                                    >
-                                        Cambiar API Key
-                                    </button>
-                                )}
+                                
+                                <div class="flex gap-1 border-b border-gray-200">
+                                    <button data-main-view="ingresos" class="px-6 py-4 font-medium text-sm transition-colors border-b-2 ${this.mainView === 'ingresos' ? 'text-blue-600 border-blue-600' : 'text-gray-600 border-transparent'}">📊 Ingresos</button>
+                                    <button data-main-view="gastos" class="px-6 py-4 font-medium text-sm transition-colors border-b-2 ${this.mainView === 'gastos' ? 'text-blue-600 border-blue-600' : 'text-gray-600 border-transparent'}">📋 Gastos</button>
+                                </div>
                             </div>
-
-                            {/* Tabs principales */}
-                            <div className="flex gap-1 border-b border-gray-200">
-                                {[
-                                    { id: 'ingresos', label: '📊 Ingresos', icon: '💰' },
-                                    { id: 'gastos', label: '📋 Gastos', icon: '💸' }
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => {
-                                            setMainView(tab.id);
-                                            setSubView('registro');
-                                        }}
-                                        className={`px-6 py-4 font-medium text-sm transition-colors border-b-2 ${
-                                            mainView === tab.id
-                                                ? 'text-blue-600 border-blue-600'
-                                                : 'text-gray-600 border-transparent hover:text-gray-900'
-                                        }`}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
+                        </header>
+                        
+                        <div class="bg-gray-50 border-b border-gray-200">
+                            <div class="max-w-7xl mx-auto px-6">
+                                <div class="flex gap-1">
+                                    <button data-sub-view="registro" class="px-6 py-3 font-medium text-sm ${this.subView === 'registro' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600'}">Registrar</button>
+                                    <button data-sub-view="resumen" class="px-6 py-3 font-medium text-sm ${this.subView === 'resumen' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600'}">Resumen</button>
+                                    <button data-sub-view="detalles" class="px-6 py-3 font-medium text-sm ${this.subView === 'detalles' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600'}">Detalles</button>
+                                </div>
                             </div>
                         </div>
-                    </header>
-
-                    {/* Sub-tabs */}
-                    <div className="bg-gray-50 border-b border-gray-200">
-                        <div className="max-w-7xl mx-auto px-6">
-                            <div className="flex gap-1">
-                                {[
-                                    { id: 'registro', label: 'Registrar', icon: Upload },
-                                    { id: 'resumen', label: 'Resumen', icon: BarChart3 },
-                                    { id: 'detalles', label: 'Detalles', icon: FileText }
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => setSubView(tab.id)}
-                                        className={`px-6 py-3 font-medium text-sm transition-colors ${
-                                            subView === tab.id
-                                                ? 'text-blue-600 border-b-2 border-blue-600'
-                                                : 'text-gray-600 hover:text-gray-900'
-                                        }`}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
+                        
+                        <main class="max-w-7xl mx-auto px-6 py-8">
+                            ${this.subView === 'registro' ? this.renderRegistro() : ''}
+                            ${this.subView === 'resumen' ? this.renderResumen(monthTransactions, total, allMonths) : ''}
+                            ${this.subView === 'detalles' ? this.renderDetalles(monthTransactions, allMonths, categorias) : ''}
+                        </main>
+                    </div>
+                `;
+            }
+            
+            renderRegistro() {
+                return `
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="space-y-4">
+                            <h2 class="text-xl font-bold text-gray-900">📷 Escanear factura</h2>
+                            <div id="dropZone" class="card p-8 text-center border-2 border-dashed border-gray-300 hover:border-blue-600 cursor-pointer transition">
+                                <p class="text-gray-600 mb-4">Arrastra o carga tu factura</p>
+                                <input type="file" id="fileInput" multiple accept="image/*,.pdf" class="hidden">
+                                <button onclick="document.getElementById('fileInput').click()" class="btn-primary">Seleccionar archivo</button>
+                            </div>
+                            ${this.processing ? '<p class="text-blue-600">⏳ Procesando...</p>' : ''}
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <h2 class="text-xl font-bold text-gray-900">✏️ Registro manual</h2>
+                            <div class="card p-6 space-y-4">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-2">Categoría *</label>
+                                    <select id="categoria" class="input-field">
+                                        ${Object.entries(this.mainView === 'ingresos' ? this.categorias.ingresos : this.categorias.gastos).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-2">Número de factura</label>
+                                    <input type="text" id="numero_factura" class="input-field" placeholder="FAC-2024-001">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-2">Fecha *</label>
+                                    <input type="date" id="fecha" class="input-field" value="${new Date().toISOString().split('T')[0]}">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-2">Importe (€) *</label>
+                                    <input type="number" id="cantidad" step="0.01" placeholder="0.00" class="input-field">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-2">${this.mainView === 'ingresos' ? 'Cliente' : 'Proveedor'} *</label>
+                                    <input type="text" id="cliente_proveedor" class="input-field" placeholder="Nombre">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-2">NIF/CIF</label>
+                                    <input type="text" id="nif_cif" class="input-field" placeholder="12345678A">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-2">Descripción</label>
+                                    <textarea id="descripcion" rows="3" class="input-field resize-none"></textarea>
+                                </div>
+                                <button id="addManual" class="btn-primary w-full mt-6">+ Guardar</button>
                             </div>
                         </div>
                     </div>
-
-                    {/* Contenido principal */}
-                    <main className="max-w-7xl mx-auto px-6 py-8">
-                        {subView === 'registro' && (
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                {/* Panel OCR */}
-                                <div className="space-y-4">
-                                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                        <Camera className="w-6 h-6 text-blue-600" />
-                                        Escanear factura
-                                    </h2>
-
-                                    <div
-                                        onDrop={(e) => {
-                                            e.preventDefault();
-                                            handleFileUpload(e.dataTransfer.files, mainView === 'ingresos');
-                                        }}
-                                        onDragOver={(e) => e.preventDefault()}
-                                        className="card p-8 text-center border-2 border-dashed border-gray-300 hover:border-blue-600 transition"
-                                    >
-                                        <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                                        <h3 className="font-semibold text-gray-900 mb-2">Arrastra o carga tu factura</h3>
-                                        <p className="text-sm text-gray-600 mb-4">
-                                            JPG, PNG, PDF • Hasta 10MB
-                                        </p>
-                                        <input
-                                            ref={fileInputRef}
-                                            type="file"
-                                            multiple
-                                            accept="image/*,.pdf"
-                                            onChange={(e) => handleFileUpload(e.target.files, mainView === 'ingresos')}
-                                            className="hidden"
-                                        />
-                                        <button
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className="btn-primary font-semibold py-2 px-6 rounded-lg transition"
-                                        >
-                                            Seleccionar archivo
-                                        </button>
-                                    </div>
-
-                                    {processing && (
-                                        <div className="card p-4 flex items-center gap-3 bg-blue-50 border-blue-200">
-                                            <Loader className="w-5 h-5 text-blue-600 animate-spin" />
-                                            <p className="text-blue-700">Procesando factura...</p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Panel Manual */}
-                                <div className="space-y-4">
-                                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                        <FileText className="w-6 h-6 text-blue-600" />
-                                        Registro manual
-                                    </h2>
-
-                                    <div className="card p-6 space-y-4">
-                                        {/* CATEGORÍA (PRIMERO) */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Categoría *</label>
-                                            <select
-                                                value={manualForm.categoria}
-                                                onChange={(e) => setManualForm({...manualForm, categoria: e.target.value})}
-                                                className="w-full input-field"
-                                            >
-                                                {Object.entries(mainView === 'ingresos' ? categorias.ingresos : categorias.gastos).map(([key, label]) => (
-                                                    <option key={key} value={key}>{label}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        {/* NÚMERO DE FACTURA */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Número de factura</label>
-                                            <input
-                                                type="text"
-                                                value={manualForm.numero_factura}
-                                                onChange={(e) => setManualForm({...manualForm, numero_factura: e.target.value})}
-                                                placeholder="Ej: FAC-2024-001"
-                                                className="w-full input-field"
-                                            />
-                                        </div>
-
-                                        {/* FECHA */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Fecha *</label>
-                                            <input
-                                                type="date"
-                                                value={manualForm.fecha}
-                                                onChange={(e) => setManualForm({...manualForm, fecha: e.target.value})}
-                                                className="w-full input-field"
-                                            />
-                                        </div>
-
-                                        {/* IMPORTE */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Importe (€) *</label>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={manualForm.cantidad}
-                                                onChange={(e) => setManualForm({...manualForm, cantidad: e.target.value})}
-                                                placeholder="0.00"
-                                                className="w-full input-field"
-                                            />
-                                        </div>
-
-                                        {/* CLIENTE/PROVEEDOR */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">
-                                                {mainView === 'ingresos' ? 'Cliente' : 'Proveedor'} *
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={manualForm.cliente_proveedor}
-                                                onChange={(e) => setManualForm({...manualForm, cliente_proveedor: e.target.value})}
-                                                placeholder="Nombre de la empresa"
-                                                className="w-full input-field"
-                                            />
-                                        </div>
-
-                                        {/* NIF */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">NIF/CIF</label>
-                                            <input
-                                                type="text"
-                                                value={manualForm.nif_cif}
-                                                onChange={(e) => setManualForm({...manualForm, nif_cif: e.target.value})}
-                                                placeholder="Ej: 12345678A"
-                                                className="w-full input-field"
-                                            />
-                                        </div>
-
-                                        {/* DESCRIPCIÓN */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Descripción</label>
-                                            <textarea
-                                                value={manualForm.descripcion}
-                                                onChange={(e) => setManualForm({...manualForm, descripcion: e.target.value})}
-                                                placeholder="Descripción del concepto (opcional)"
-                                                rows="3"
-                                                className="w-full input-field resize-none"
-                                            />
-                                        </div>
-
-                                        <button
-                                            onClick={handleAddManual}
-                                            className="w-full btn-primary font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2 mt-6"
-                                        >
-                                            <Plus className="w-5 h-5" />
-                                            Guardar {mainView === 'ingresos' ? 'ingreso' : 'gasto'}
-                                        </button>
-                                    </div>
-                                </div>
+                `;
+            }
+            
+            renderResumen(monthTransactions, total, allMonths) {
+                return `
+                    <div class="space-y-6">
+                        <select id="monthSelect" class="px-4 py-3 border border-gray-300 rounded-lg">
+                            ${allMonths.map(m => `<option value="${m}" ${m === this.selectedMonth ? 'selected' : ''}>${new Date(m + '-01').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</option>`).join('')}
+                        </select>
+                        
+                        <div class="card p-8 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                            <p class="text-sm font-medium text-blue-600 mb-2">Total ${this.mainView}</p>
+                            <p class="text-4xl font-bold text-gray-900">${total.toFixed(2)} €</p>
+                            <p class="text-sm text-gray-600">${monthTransactions.length} transacciones</p>
+                        </div>
+                        
+                        <button id="exportBtn" class="btn-primary w-full py-3">📥 Descargar Excel</button>
+                    </div>
+                `;
+            }
+            
+            renderDetalles(monthTransactions, allMonths, categorias) {
+                return `
+                    <div class="space-y-6">
+                        <select id="monthSelect" class="px-4 py-3 border border-gray-300 rounded-lg">
+                            ${allMonths.map(m => `<option value="${m}" ${m === this.selectedMonth ? 'selected' : ''}>${new Date(m + '-01').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</option>`).join('')}
+                        </select>
+                        
+                        <div class="card overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table>
+                                    <thead>
+                                        <tr class="bg-gray-50 border-b border-gray-200">
+                                            <th>Fecha</th>
+                                            <th>Nº Factura</th>
+                                            <th>Cliente/Proveedor</th>
+                                            <th>Descripción</th>
+                                            <th style="text-align: right;">Importe</th>
+                                            <th style="text-align: center;">Tipo Documento</th>
+                                            <th style="text-align: center;">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${monthTransactions.length === 0 ? `
+                                            <tr><td colspan="7" style="text-align: center; padding: 40px;">No hay transacciones</td></tr>
+                                        ` : monthTransactions.sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).map(t => `
+                                            <tr>
+                                                <td>${new Date(t.fecha).toLocaleDateString('es-ES')}</td>
+                                                <td style="font-weight: 500;">${t.numero_factura || '—'}</td>
+                                                <td>${t.cliente_proveedor}</td>
+                                                <td style="color: #6b7280;">${t.descripcion || '—'}</td>
+                                                <td style="text-align: right; font-weight: bold;">${t.cantidad.toFixed(2)} €</td>
+                                                <td style="text-align: center;">
+                                                    ${!t.documento_id ? '<span style="font-size: 12px; color: #9ca3af;">Sin documento</span>' : `
+                                                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                                                            <span class="badge ${t.tipo_documento === 'factura' ? 'badge-factura' : 'badge-ticket'}">
+                                                                ${t.tipo_documento === 'factura' ? '✓ Factura válida' : '⚠ Ticket'}
+                                                            </span>
+                                                            <span style="font-size: 12px; color: #9ca3af;">${t.origen === 'ocr' ? '📷' : '✏️'} ${t.origen}</span>
+                                                        </div>
+                                                    `}
+                                                </td>
+                                                <td style="text-align: center;">
+                                                    <div style="display: flex; gap: 8px; justify-content: center;">
+                                                        ${t.documento_id ? `<button data-view-doc="${t.documento_id}" style="color: #2563eb; cursor: pointer; border: none; background: none; padding: 4px;">👁️</button>` : ''}
+                                                        <button data-delete="${t.id}" style="color: #ef4444; cursor: pointer; border: none; background: none; padding: 4px;">🗑️</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
                             </div>
-                        )}
-
-                        {subView === 'resumen' && (
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-900 mb-3">Período:</label>
-                                    <select
-                                        value={selectedMonth}
-                                        onChange={(e) => setSelectedMonth(e.target.value)}
-                                        className="px-4 py-3 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:border-blue-600"
-                                    >
-                                        {allMonths.map(month => (
-                                            <option key={month} value={month}>
-                                                {new Date(month + '-01').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="card p-8 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-                                    <p className="text-sm font-medium text-blue-600 mb-2">Total {mainView}</p>
-                                    <p className="text-4xl font-bold text-gray-900 mb-1">{total.toFixed(2)} €</p>
-                                    <p className="text-sm text-gray-600">{monthTransactions.length} {monthTransactions.length === 1 ? 'transacción' : 'transacciones'}</p>
-                                </div>
-
-                                <button
-                                    onClick={handleExportCSV}
-                                    className="w-full btn-primary font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2"
-                                >
-                                    <Download className="w-5 h-5" />
-                                    Descargar Excel
-                                </button>
-                            </div>
-                        )}
-
-                        {subView === 'detalles' && (
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-900 mb-3">Período:</label>
-                                    <select
-                                        value={selectedMonth}
-                                        onChange={(e) => setSelectedMonth(e.target.value)}
-                                        className="px-4 py-3 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:border-blue-600"
-                                    >
-                                        {allMonths.map(month => (
-                                            <option key={month} value={month}>
-                                                {new Date(month + '-01').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {monthTransactions.length === 0 ? (
-                                    <div className="card p-12 text-center">
-                                        <FileQuestion className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                                        <p className="text-gray-500">No hay transacciones para este período</p>
-                                    </div>
-                                ) : (
-                                    <div className="card overflow-hidden">
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full">
-                                                <thead>
-                                                    <tr className="bg-gray-50 border-b border-gray-200">
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700">Fecha</th>
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700">Nº Factura</th>
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700">Cliente/Proveedor</th>
-                                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700">Descripción</th>
-                                                        <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700">Importe</th>
-                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-700">Tipo de Documento</th>
-                                                        <th className="px-6 py-4 text-center text-xs font-semibold text-gray-700">Acciones</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-200">
-                                                    {monthTransactions
-                                                        .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
-                                                        .map(t => (
-                                                            <tr key={t.id} className="hover:bg-gray-50 transition">
-                                                                <td className="px-6 py-4 text-sm text-gray-900">
-                                                                    {new Date(t.fecha).toLocaleDateString('es-ES')}
-                                                                </td>
-                                                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">
-                                                                    {t.numero_factura || '—'}
-                                                                </td>
-                                                                <td className="px-6 py-4 text-sm text-gray-900">
-                                                                    {t.cliente_proveedor}
-                                                                </td>
-                                                                <td className="px-6 py-4 text-sm text-gray-600">
-                                                                    {t.descripcion || '—'}
-                                                                </td>
-                                                                <td className="px-6 py-4 text-sm text-right font-semibold text-gray-900">
-                                                                    {t.cantidad.toFixed(2)} €
-                                                                </td>
-                                                                <td className="px-6 py-4 text-center">
-                                                                    {!t.documento_id ? (
-                                                                        <div className="flex items-center justify-center gap-2">
-                                                                            <span className="text-xs text-gray-500">Sin documento</span>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="flex flex-col items-center gap-1">
-                                                                            {t.tipo_documento === 'factura' ? (
-                                                                                <span className="badge badge-factura">
-                                                                                    ✓ Factura válida
-                                                                                </span>
-                                                                            ) : t.tipo_documento === 'ticket' ? (
-                                                                                <span className="badge badge-ticket">
-                                                                                    ⚠ Ticket (solicitar factura)
-                                                                                </span>
-                                                                            ) : (
-                                                                                <span className="badge" style={{backgroundColor: '#e5e7eb', color: '#4b5563'}}>
-                                                                                    ? Tipo desconocido
-                                                                                </span>
-                                                                            )}
-                                                                            <span className="text-xs text-gray-500">
-                                                                                {t.origen === 'ocr' ? '📷' : '✏️'} {t.origen}
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-                                                                <td className="px-6 py-4 text-center">
-                                                                    <div className="flex items-center justify-center gap-2">
-                                                                        {t.documento_id && (
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    const docData = JSON.parse(localStorage.getItem(t.documento_id));
-                                                                                    const isImage = docData.type.startsWith('image');
-                                                                                    setPreviewModal({
-                                                                                        data: docData.data,
-                                                                                        nombre_archivo: docData.name,
-                                                                                        tipo_archivo: isImage ? 'image' : 'pdf'
-                                                                                    });
-                                                                                }}
-                                                                                className="text-blue-600 hover:text-blue-700 p-2"
-                                                                                title="Ver documento"
-                                                                            >
-                                                                                <Eye className="w-4 h-4" />
-                                                                            </button>
-                                                                        )}
-                                                                        <button
-                                                                            onClick={() => handleDelete(t.id)}
-                                                                            className="text-red-600 hover:text-red-700 p-2"
-                                                                            title="Eliminar"
-                                                                        >
-                                                                            <Trash2 className="w-4 h-4" />
-                                                                        </button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </main>
-                </div>
-            );
+                        </div>
+                    </div>
+                `;
+            }
         }
-
-        const { BarChart3 } = lucide;
-        ReactDOM.render(<FinanceApp />, document.getElementById('root'));
+        
+        // Iniciar app
+        new FinanceApp();
     </script>
 </body>
 </html>
