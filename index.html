@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/tesseract.js@v2/dist/tesseract.min.js"></script>
     
     <style>
         * {
@@ -252,11 +253,6 @@
             }
             
             async processDocument(file) {
-                if (!this.apiKey) {
-                    alert('Por favor configura tu Google Vision API Key primero');
-                    return;
-                }
-
                 try {
                     this.processing = true;
                     this.render();
@@ -273,38 +269,13 @@
                     };
                     localStorage.setItem(documentId, JSON.stringify(documentData));
 
-                    // Llamar a Google Vision API
-                    const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${this.apiKey}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            requests: [{
-                                image: {
-                                    content: base64Data
-                                },
-                                features: [
-                                    { type: 'TEXT_DETECTION' },
-                                    { type: 'DOCUMENT_TEXT_DETECTION' }
-                                ]
-                            }]
-                        })
-                    });
+                    // Usar Tesseract.js para OCR
+                    const result = await Tesseract.recognize(
+                        `data:${file.type};base64,${base64Data}`,
+                        'spa'
+                    );
 
-                    if (!response.ok) throw new Error('Error en Google Vision API');
-
-                    const data = await response.json();
-                    
-                    if (data.responses[0].error) {
-                        throw new Error(data.responses[0].error.message);
-                    }
-
-                    // Extraer texto de la respuesta
-                    const textAnnotations = data.responses[0].textAnnotations || [];
-                    const fullText = textAnnotations.length > 0 ? textAnnotations[0].description : '';
-
-                    // Procesar texto con patrón simple
+                    const fullText = result.data.text;
                     const extracted = this.extractDataFromText(fullText);
                     const tipoDocumento = this.detectarTipoDocumento(file.name);
 
@@ -324,7 +295,7 @@
                     }, 100);
                     
                 } catch (error) {
-                    alert('Error: ' + error.message);
+                    alert('Error al procesar imagen: ' + error.message);
                     this.processing = false;
                     this.render();
                 }
@@ -544,19 +515,6 @@
                                 <h1 style="font-size: 24px; font-weight: bold; color: #1a1a1a;">Contabilidad-NGA</h1>
                                 <p style="color: #6b7280; font-size: 14px;">Gestión de facturas e ingresos</p>
                             </div>
-                        </div>
-                        
-                        <div style="background: ${this.apiKey ? '#dcfce7' : '#fef3c7'}; border: 1px solid ${this.apiKey ? '#86efac' : '#fde68a'}; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
-                            <p style="color: ${this.apiKey ? '#15803d' : '#92400e'}; font-size: 13px; margin-bottom: 8px; font-weight: 600;">
-                                ${this.apiKey ? '✅ Google Vision API configurada' : '⚠️ Introduce tu Google Vision API Key'}
-                            </p>
-                            <div style="display: flex; gap: 8px;">
-                                <input type="password" id="apiKey" placeholder="AIzaSy..." value="${this.apiKey}" style="flex: 1; padding: 8px; border: 1px solid ${this.apiKey ? '#86efac' : '#fde68a'}; border-radius: 6px; font-size: 13px; font-family: monospace;">
-                                <button onclick="window.app.setApiKey(document.getElementById('apiKey').value)" style="padding: 8px 16px; background: ${this.apiKey ? '#10b981' : '#f59e0b'}; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;">Guardar</button>
-                            </div>
-                            <p style="font-size: 11px; color: ${this.apiKey ? '#15803d' : '#92400e'}; margin-top: 6px;">
-                                Obtén gratis en <a href="https://console.cloud.google.com" target="_blank" style="color: inherit; text-decoration: underline;">console.cloud.google.com</a>
-                            </p>
                         </div>
                         
                         <div style="display: flex; gap: 8px; overflow-x: auto; border-bottom: 1px solid #e5e7eb; padding-bottom: 0;">
